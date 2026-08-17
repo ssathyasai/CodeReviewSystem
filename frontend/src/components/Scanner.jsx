@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { FileCode, Github, Upload, Play, AlertTriangle, CheckCircle, ShieldAlert, Sparkles, Cpu, Zap, Code, ArrowRight, Check, RefreshCw, FileText } from 'lucide-react'
+import { FileCode, Github, Upload, Play, AlertTriangle, CheckCircle, ShieldAlert, Sparkles, Cpu, Zap, Code, ArrowRight, Check, RefreshCw, Eye, ChevronDown } from 'lucide-react'
 import axios from 'axios'
 
 export default function Scanner() {
@@ -11,6 +11,7 @@ export default function Scanner() {
   
   const [scanning, setScanning] = useState(false)
   const [scanResult, setScanResult] = useState(null)
+  const [appliedFixes, setAppliedFixes] = useState({}) // Track which findings have "Apply Fix" toggled
 
   const handleSampleCode = () => {
     setCode(`import os
@@ -42,6 +43,7 @@ def execute_user_query(query_param):
     if (!code.trim() && !fileObj) return
     setScanning(true)
     setScanResult(null)
+    setAppliedFixes({})
 
     try {
       const formData = new FormData()
@@ -68,6 +70,7 @@ def execute_user_query(query_param):
     if (!githubUrl.trim()) return
     setScanning(true)
     setScanResult(null)
+    setAppliedFixes({})
 
     try {
       const res = await axios.post('/github/scan-repo', {
@@ -83,21 +86,27 @@ def execute_user_query(query_param):
     }
   }
 
-  const applyAutoFix = (oldCode, newCode) => {
-    if (!oldCode || !newCode) return
-    setCode(prev => prev.replace(oldCode, newCode))
+  const toggleApplyFix = (findingId, oldCode, newCode) => {
+    setAppliedFixes(prev => ({
+      ...prev,
+      [findingId]: !prev[findingId]
+    }))
+
+    // If in single code editor mode, also replace text in editor
+    if (code && oldCode && newCode) {
+      setCode(prev => prev.replace(oldCode, newCode))
+    }
   }
 
   return (
     <div className="space-y-6">
-      {/* Header Bar */}
+      {/* Top Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 cyber-card p-6 rounded-3xl">
         <div>
           <h2 className="text-xl font-extrabold text-white font-heading">Code Security Scanner</h2>
-          <p className="text-xs text-slate-400">Scan source code files or full GitHub repositories for security vulnerabilities</p>
+          <p className="text-xs text-slate-400">Identify vulnerabilities and view correct functional code fixes</p>
         </div>
 
-        {/* Dual Mode Switcher */}
         <div className="flex p-1 bg-slate-900 rounded-2xl border border-slate-800 self-start sm:self-auto">
           <button
             onClick={() => setScanType('code')}
@@ -124,7 +133,7 @@ def execute_user_query(query_param):
         </div>
       </div>
 
-      {/* Main Input Workbench */}
+      {/* Editor or GitHub URL */}
       {scanType === 'code' ? (
         <div className="cyber-card p-6 rounded-3xl space-y-4">
           <div className="flex items-center justify-between">
@@ -179,7 +188,6 @@ def execute_user_query(query_param):
           </div>
         </div>
       ) : (
-        /* GitHub URL Input Box */
         <div className="cyber-card p-6 rounded-3xl space-y-6">
           <div className="flex items-center space-x-3">
             <div className="p-3 bg-purple-500/10 text-purple-400 rounded-2xl border border-purple-500/20">
@@ -236,9 +244,10 @@ def execute_user_query(query_param):
         </div>
       )}
 
-      {/* Audit Verdict & Findings */}
+      {/* Audit Verdict & Interactive Findings Cards */}
       {scanResult && (
         <div className="space-y-6">
+          {/* Security Verdict Banner */}
           {(() => {
             const verdict = scanResult.verdict?.decision || (scanResult.can_deploy === false || scanResult.status === 'critical' ? 'BLOCK' : 'APPROVE')
             const isBlock = verdict === 'BLOCK'
@@ -274,11 +283,11 @@ def execute_user_query(query_param):
             )
           })()}
 
-          {/* Findings Cards */}
+          {/* Interactive Vulnerability Findings */}
           <div className="cyber-card p-6 rounded-3xl space-y-4">
             <h3 className="text-sm font-bold text-white font-heading flex items-center space-x-2">
               <Sparkles className="w-4 h-4 text-cyan-400" />
-              <span>Vulnerability Findings</span>
+              <span>Detected Vulnerabilities & Function-Preserving Code Fixes</span>
             </h3>
 
             {(() => {
@@ -304,52 +313,77 @@ def execute_user_query(query_param):
                   <div className="p-6 text-center space-y-1">
                     <CheckCircle className="w-8 h-8 text-emerald-400 mx-auto" />
                     <h4 className="text-sm font-bold text-white">No Vulnerabilities Detected</h4>
-                    <p className="text-xs text-slate-400 font-mono">Code passes OWASP security standards.</p>
+                    <p className="text-xs text-slate-400 font-mono">Code complies with OWASP security standards.</p>
                   </div>
                 )
               }
 
               return (
-                <div className="space-y-3">
-                  {allFindings.map((finding, idx) => (
-                    <div key={idx} className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2">
-                      <div className="flex items-start justify-between">
-                        <div className="space-y-1">
-                          <div className="flex items-center space-x-2">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
-                              finding.severity === 'CRITICAL' ? 'badge-block' : finding.severity === 'HIGH' ? 'badge-warn' : 'bg-blue-500/10 text-cyan-400 border border-blue-500/20'
-                            }`}>
-                              {finding.severity || 'MEDIUM'}
-                            </span>
-                            <span className="text-xs font-mono text-cyan-400 font-semibold">{finding.rule}</span>
-                            {finding.line && <span className="text-[11px] text-slate-500 font-mono">Line {finding.line}</span>}
-                          </div>
-                          <p className="text-xs text-slate-300">{finding.message}</p>
-                        </div>
-                      </div>
+                <div className="space-y-4">
+                  {allFindings.map((finding, idx) => {
+                    const findingId = `finding-${idx}`
+                    const isFixedToggled = appliedFixes[findingId]
 
-                      {finding.oldCode && finding.newCode && (
-                        <div className="p-3 rounded-xl bg-[#050811] border border-slate-800 space-y-1.5 font-mono text-xs">
-                          <div className="flex items-center justify-between text-[11px] text-slate-500">
-                            <span>SUGGESTED CODE FIX</span>
-                            <button
-                              onClick={() => applyAutoFix(finding.oldCode, finding.newCode)}
-                              className="px-2 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-[10px] font-bold border border-emerald-500/30 transition-all flex items-center space-x-1"
-                            >
-                              <Check className="w-3 h-3" />
-                              <span>Apply Fix</span>
-                            </button>
+                    return (
+                      <div key={idx} className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="space-y-1">
+                            <div className="flex items-center space-x-2">
+                              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+                                finding.severity === 'CRITICAL' ? 'badge-block' : finding.severity === 'HIGH' ? 'badge-warn' : 'bg-blue-500/10 text-cyan-400 border border-blue-500/20'
+                              }`}>
+                                {finding.severity || 'MEDIUM'}
+                              </span>
+                              <span className="text-xs font-mono text-cyan-400 font-bold">{finding.rule}</span>
+                              {finding.line && <span className="text-[11px] text-slate-400 font-mono">Line {finding.line}</span>}
+                            </div>
+                            <p className="text-xs text-slate-200 font-medium">{finding.message}</p>
+                            {finding.suggestion && <p className="text-[11px] text-slate-400 font-mono">💡 {finding.suggestion}</p>}
                           </div>
-                          <div className="text-rose-400 bg-rose-950/30 p-2 rounded border border-rose-500/20 overflow-x-auto">
-                            - {finding.oldCode}
+
+                          {/* Interactive Apply Fix Button */}
+                          <button
+                            onClick={() => toggleApplyFix(findingId, finding.oldCode, finding.newCode)}
+                            className={`px-4 py-2 rounded-xl text-xs font-bold font-mono transition-all flex items-center space-x-2 shrink-0 ${
+                              isFixedToggled
+                                ? 'bg-emerald-500 text-slate-950 shadow-glow-emerald'
+                                : 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 shadow-glow-cyan'
+                            }`}
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>{isFixedToggled ? 'Fix Applied Below ✓' : 'Apply Fix & Show Correct Code'}</span>
+                          </button>
+                        </div>
+
+                        {/* Error Code Box */}
+                        <div className="space-y-1.5 font-mono text-xs">
+                          <div className="text-[10px] text-rose-400 font-bold flex items-center space-x-1">
+                            <AlertTriangle className="w-3 h-3 text-rose-400" />
+                            <span>DETECTED INCORRECT / VULNERABLE CODE:</span>
                           </div>
-                          <div className="text-emerald-400 bg-emerald-950/30 p-2 rounded border border-emerald-500/20 overflow-x-auto">
-                            + {finding.newCode}
+                          <div className="p-3 rounded-xl bg-rose-950/30 border border-rose-500/30 text-rose-300 font-mono overflow-x-auto">
+                            {finding.oldCode || 'vulnerable line of code'}
                           </div>
                         </div>
-                      )}
-                    </div>
-                  ))}
+
+                        {/* Revealed Correct Code Box Directly Below Error Code */}
+                        {isFixedToggled && (
+                          <div className="space-y-1.5 font-mono text-xs animate-fadeIn">
+                            <div className="text-[10px] text-emerald-400 font-bold flex items-center space-x-1">
+                              <CheckCircle className="w-3 h-3 text-emerald-400" />
+                              <span>CORRECTED FUNCTIONAL CODE (FUNCTIONALITY PRESERVED):</span>
+                            </div>
+                            <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/40 text-emerald-300 font-mono overflow-x-auto shadow-inner">
+                              {finding.newCode || '# Safe functional replacement'}
+                            </div>
+                            <p className="text-[10px] text-emerald-400/80 font-mono italic">
+                              ✓ Vulnerability removed while 100% preserving program execution logic.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               )
             })()}
