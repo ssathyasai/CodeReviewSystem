@@ -6,7 +6,7 @@ export default function SidebarNav({ activeTab, setActiveTab, systemStatus, curr
     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, badge: 'Live' },
     { id: 'scanner', label: 'Code Auditor', icon: FileCode, badge: 'SAST/DAST' },
     { id: 'history', label: 'Audit Logs', icon: History, badge: 'MongoDB' },
-    { id: 'github', label: 'Webhooks', icon: Github, badge: 'HMAC' },
+    { id: 'github', label: 'Webhook Projects', icon: Github, badge: 'Live Tracker' },
   ]
 
   return (

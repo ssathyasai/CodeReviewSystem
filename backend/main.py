@@ -368,6 +368,8 @@ async def github_webhook(request: Request):
         # Save scan report
         scan_id = str(uuid.uuid4())
         results["scan_id"] = scan_id
+        results["scan_type"] = "github_webhook"
+        results["is_webhook"] = True
         results["timestamp"] = datetime.now().isoformat()
         db_save_scan(results)
         
@@ -382,6 +384,85 @@ async def github_webhook(request: Request):
         import traceback
         traceback.print_exc()
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.post("/github/simulate-push")
+async def simulate_github_push(request: dict = Body(...)):
+    """Simulate receiving a GitHub push webhook event for testing and previewing code review UI"""
+    repo_name = request.get("repo_name", "acme-corp/payment-service")
+    branch = request.get("branch", "main")
+    pusher = request.get("pusher", "alex-developer")
+    
+    scan_id = str(uuid.uuid4())
+    simulated_results = {
+        "scan_id": scan_id,
+        "scan_type": "github_webhook",
+        "is_webhook": True,
+        "timestamp": datetime.now().isoformat(),
+        "repository": repo_name,
+        "branch": branch,
+        "files_analyzed": 2,
+        "status": "warning",
+        "can_deploy": False,
+        "message": "Found 1 high severity issue. Security review required.",
+        "metadata": {
+            "repository": repo_name,
+            "branch": branch,
+            "pusher": pusher,
+            "commit_count": 1,
+            "changed_files": ["backend/payment_gateway.py", "backend/main.py"]
+        },
+        "summary": {
+            "total_issues": 2,
+            "critical_issues": 0,
+            "high_issues": 1,
+            "medium_issues": 1,
+            "low_issues": 0
+        },
+        "files": [
+            {
+                "path": "backend/payment_gateway.py",
+                "status": "analyzed",
+                "findings_count": 2,
+                "summary": {"critical": 0, "high": 1, "medium": 1, "low": 0},
+                "engines": {
+                    "sast": {
+                        "status": "warning",
+                        "findings": [
+                            {
+                                "line": 42,
+                                "issue": "Hardcoded secret key or sensitive token detected in payment headers",
+                                "severity": "HIGH",
+                                "rule_id": "python.lang.security.hardcoded-token",
+                                "recommendation": "Use environment variables `os.getenv('PAYMENT_API_KEY')` instead of hardcoded strings."
+                            }
+                        ]
+                    },
+                    "governance": {
+                        "status": "warning",
+                        "findings": [
+                            {
+                                "line": 58,
+                                "issue": "OWASP A02: Cryptographic Failure - Weak MD5 algorithm used for signature check",
+                                "severity": "MEDIUM",
+                                "rule_id": "gov.owasp.a02",
+                                "recommendation": "Upgrade hash algorithm to SHA-256 (e.g. hashlib.sha256)."
+                            }
+                        ]
+                    },
+                    "dast": {"status": "clean", "findings": []}
+                }
+            }
+        ]
+    }
+    
+    db_save_scan(simulated_results)
+    
+    await manager.broadcast({
+        "type": "github_analysis_complete",
+        "data": simulated_results
+    })
+    
+    return JSONResponse(content=simulated_results)
 
 @app.get("/github/status")
 async def github_status():
