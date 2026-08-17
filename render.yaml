@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: code-review-system
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: ./build.sh
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: MONGODB_URI
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GITHUB_WEBHOOK_SECRET
+        sync: false
+      - key: PYTHON_VERSION
+        value: 3.10.0
