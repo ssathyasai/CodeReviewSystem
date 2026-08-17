@@ -19,8 +19,14 @@ export default function Dashboard({ setActiveTab, currentUser }) {
   const fetchDashboardData = async () => {
     try {
       setLoading(true)
-      const usernameParam = currentUser?.username ? `?username=${currentUser.username}` : '?limit=10'
-      const scansRes = await axios.get(`/scans${usernameParam}`).catch(() => ({ data: { scans: [] } }))
+      if (!currentUser?.username) {
+        setStats({ totalScans: 0, criticalCount: 0, passedCount: 0, warningCount: 0 })
+        setRecentScans([])
+        setLoading(false)
+        return
+      }
+
+      const scansRes = await axios.get(`/scans?username=${currentUser.username}`).catch(() => ({ data: { scans: [] } }))
       const scans = scansRes.data.scans || []
 
       let critical = 0

@@ -15,8 +15,12 @@ export default function ScanHistory({ currentUser }) {
   const fetchScans = async () => {
     try {
       setLoading(true)
-      const usernameParam = currentUser?.username ? `?username=${currentUser.username}` : '?limit=50'
-      const res = await axios.get(`/scans${usernameParam}`)
+      if (!currentUser?.username) {
+        setScans([])
+        setLoading(false)
+        return
+      }
+      const res = await axios.get(`/scans?username=${currentUser.username}`)
       setScans(res.data.scans || [])
     } catch (err) {
       console.error('Failed to fetch scan history:', err)
