@@ -24,7 +24,10 @@ import {
   User,
   Clock,
   Sparkles,
-  ExternalLink,
+  MessageSquare,
+  Send,
+  Layers,
+  FolderGit2,
   Code
 } from 'lucide-react'
 import axios from 'axios'
@@ -44,8 +47,9 @@ export default function GitHubSettings({ currentUser }) {
   const [branchInput, setBranchInput] = useState('main')
   const [isScanningRepo, setIsScanningRepo] = useState(false)
 
-  // Test Push Simulation state
+  // Simulation states
   const [isSimulatingPush, setIsSimulatingPush] = useState(false)
+  const [isSimulatingPR, setIsSimulatingPR] = useState(false)
   const [simulationNotice, setSimulationNotice] = useState(null)
 
   const webhookUrl = `${window.location.origin}/github/webhook`
@@ -54,7 +58,7 @@ export default function GitHubSettings({ currentUser }) {
   useEffect(() => {
     fetchWebhookScans()
 
-    // Setup WebSocket listener for live push events
+    // Setup WebSocket listener for live push and PR events
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const wsUrl = `${protocol}//${window.location.host}/ws`
     let socket = null
@@ -87,9 +91,8 @@ export default function GitHubSettings({ currentUser }) {
     try {
       const res = await axios.get('/scans?limit=100')
       const allScans = res.data.scans || []
-      // Filter scans that originate from GitHub webhooks or GitHub repo scans
       const githubScans = allScans.filter(
-        (s) => s.scan_type === 'github_webhook' || s.is_webhook || s.repository || s.metadata?.repository
+        (s) => s.scan_type === 'github_webhook' || s.scan_type === 'github_pr' || s.is_webhook || s.repository || s.metadata?.repository
       )
       setScans(githubScans.length > 0 ? githubScans : allScans)
     } catch (err) {
@@ -121,16 +124,16 @@ export default function GitHubSettings({ currentUser }) {
     }
   }
 
-  const handleSimulatePush = async () => {
+  const handleSimulatePush = async (targetRepo = 'ssathyasai/CodeReviewSystem') => {
     setIsSimulatingPush(true)
     setSimulationNotice(null)
     try {
       const res = await axios.post('/github/simulate-push', {
-        repo_name: 'ssathyasai/CodeReviewSystem',
+        repo_name: targetRepo,
         branch: 'main',
         pusher: currentUser?.username || 'alex-dev'
       })
-      setSimulationNotice('✅ Simulated push event received & code review generated!')
+      setSimulationNotice(`✅ Simulated push event received & review generated for ${targetRepo}!`)
       fetchWebhookScans()
       setSelectedScan(res.data)
       setActiveSubTab('tracker')
@@ -139,6 +142,29 @@ export default function GitHubSettings({ currentUser }) {
       console.error('Push simulation failed:', err)
     } finally {
       setIsSimulatingPush(false)
+    }
+  }
+
+  const handleSimulatePR = async (targetRepo = 'ssathyasai/CodeReviewSystem') => {
+    setIsSimulatingPR(true)
+    setSimulationNotice(null)
+    try {
+      const res = await axios.post('/github/simulate-pr', {
+        repo_name: targetRepo,
+        pr_number: Math.floor(Math.random() * 80) + 10,
+        pr_title: 'feat: add payment security check & API validation',
+        author: currentUser?.username || 'dev-contributor',
+        branch: 'feature/security-fix'
+      })
+      setSimulationNotice(`🔀 Simulated PR Webhook received & automated comment posted to ${targetRepo}!`)
+      fetchWebhookScans()
+      setSelectedScan(res.data)
+      setActiveSubTab('tracker')
+      setTimeout(() => setSimulationNotice(null), 5000)
+    } catch (err) {
+      console.error('PR simulation failed:', err)
+    } finally {
+      setIsSimulatingPR(false)
     }
   }
 
@@ -156,7 +182,7 @@ export default function GitHubSettings({ currentUser }) {
   // Filter scans
   const filteredScans = scans.filter((scan) => {
     const repo = scan.repository || scan.metadata?.repository || scan.project_name || scan.file || ''
-    const pusher = scan.metadata?.pusher || ''
+    const pusher = scan.metadata?.pusher || scan.pr_author || ''
     const matchesQuery = repo.toLowerCase().includes(searchQuery.toLowerCase()) || pusher.toLowerCase().includes(searchQuery.toLowerCase())
 
     const verdict = scan.verdict?.decision || (scan.can_deploy === false ? 'BLOCK' : 'APPROVE')
@@ -164,33 +190,52 @@ export default function GitHubSettings({ currentUser }) {
     return matchesQuery && verdict === statusFilter
   })
 
+  // Group scans by project repository into Horizontal Project Sections
+  const projectGroups = filteredScans.reduce((groups, scan) => {
+    const repoName = scan.repository || scan.metadata?.repository || scan.project_name || 'ssathyasai/CodeReviewSystem'
+    if (!groups[repoName]) {
+      groups[repoName] = []
+    }
+    groups[repoName].push(scan)
+    return groups
+  }, {})
+
   return (
     <div className="space-y-6">
       {/* Top Banner */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 glass-box p-6 rounded-3xl">
         <div className="flex items-center space-x-3">
           <div className="p-3 bg-indigo-500/10 text-indigo-400 rounded-2xl border border-indigo-500/20 glow-indigo">
-            <Github className="w-6 h-6" />
+            <FolderGit2 className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-xl font-extrabold text-white">Webhook Projects & Pushed Code Review</h2>
-            <p className="text-xs text-slate-400">Track repository push events, automate code reviews, and inspect security findings</p>
+            <h2 className="text-xl font-extrabold text-white">Webhook Projects & Automated PR Reviews</h2>
+            <p className="text-xs text-slate-400">Track horizontal project repositories, PR events, git pushes, and automated PR comments</p>
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={handleSimulatePush}
-            disabled={isSimulatingPush}
-            className="px-4 py-2 rounded-2xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 text-xs font-bold font-mono transition-all flex items-center space-x-2 shrink-0"
+            onClick={() => handleSimulatePR('ssathyasai/CodeReviewSystem')}
+            disabled={isSimulatingPR}
+            className="px-3.5 py-2 rounded-2xl bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30 text-xs font-bold font-mono transition-all flex items-center space-x-1.5 shrink-0"
           >
-            <Play className={`w-3.5 h-3.5 ${isSimulatingPush ? 'animate-spin' : 'fill-current'}`} />
-            <span>{isSimulatingPush ? 'Simulating Push...' : 'Test Webhook Push'}</span>
+            <GitPullRequest className={`w-3.5 h-3.5 ${isSimulatingPR ? 'animate-spin' : ''}`} />
+            <span>{isSimulatingPR ? 'Analyzing PR...' : 'Test PR Webhook & Comment'}</span>
           </button>
 
-          <div className="px-3.5 py-2 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 text-xs font-mono flex items-center space-x-2">
+          <button
+            onClick={() => handleSimulatePush('ssathyasai/CodeReviewSystem')}
+            disabled={isSimulatingPush}
+            className="px-3.5 py-2 rounded-2xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 text-xs font-bold font-mono transition-all flex items-center space-x-1.5 shrink-0"
+          >
+            <Play className={`w-3.5 h-3.5 ${isSimulatingPush ? 'animate-spin' : 'fill-current'}`} />
+            <span>{isSimulatingPush ? 'Simulating Push...' : 'Test Push Webhook'}</span>
+          </button>
+
+          <div className="px-3 py-2 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 text-xs font-mono flex items-center space-x-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>HMAC SHA-256 Active</span>
+            <span>PR API Connected</span>
           </div>
         </div>
       </div>
@@ -202,48 +247,57 @@ export default function GitHubSettings({ currentUser }) {
         </div>
       )}
 
-      {/* Interactive Workflow Visual Guide */}
+      {/* Interactive PR & Webhook Workflow Diagram */}
       <div className="glass-box p-6 rounded-3xl space-y-4">
         <h3 className="text-xs font-bold text-slate-300 uppercase tracking-widest font-mono flex items-center space-x-2">
           <Sparkles className="w-4 h-4 text-cyan-400" />
-          <span>How To Use Your Webhook Project</span>
+          <span>GitHub Pull Request Webhook Automation Pipeline</span>
         </h3>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs font-mono">
-          <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2 relative overflow-hidden group hover:border-cyan-500/40 transition-all">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-3 text-xs font-mono">
+          <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-1.5">
             <div className="flex items-center justify-between">
-              <span className="w-6 h-6 rounded-full bg-cyan-500/20 text-cyan-400 font-extrabold text-xs flex items-center justify-center border border-cyan-500/30">1</span>
-              <GitCommit className="w-4 h-4 text-slate-500" />
+              <span className="w-5 h-5 rounded-full bg-purple-500/20 text-purple-400 font-extrabold text-[10px] flex items-center justify-center border border-purple-500/30">1</span>
+              <GitPullRequest className="w-4 h-4 text-purple-400" />
             </div>
-            <h4 className="font-bold text-white">1. Developer Pushes Code</h4>
-            <p className="text-[11px] text-slate-400 font-sans">Run <code className="text-cyan-300 bg-slate-950 px-1 py-0.5 rounded">git push origin main</code> in your connected repository.</p>
+            <h4 className="font-bold text-white text-[11px]">Developer PR</h4>
+            <p className="text-[10px] text-slate-400 font-sans">Developer opens PR or pushes code on GitHub.</p>
           </div>
 
-          <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2 relative overflow-hidden group hover:border-cyan-500/40 transition-all">
+          <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-1.5">
             <div className="flex items-center justify-between">
-              <span className="w-6 h-6 rounded-full bg-cyan-500/20 text-cyan-400 font-extrabold text-xs flex items-center justify-center border border-cyan-500/30">2</span>
-              <Lock className="w-4 h-4 text-slate-500" />
+              <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-400 font-extrabold text-[10px] flex items-center justify-center border border-cyan-500/30">2</span>
+              <Lock className="w-4 h-4 text-cyan-400" />
             </div>
-            <h4 className="font-bold text-white">2. HMAC Webhook Signal</h4>
-            <p className="text-[11px] text-slate-400 font-sans">GitHub sends an HTTP push payload verified with SHA-256 HMAC signature.</p>
+            <h4 className="font-bold text-white text-[11px]">Webhook Signal</h4>
+            <p className="text-[10px] text-slate-400 font-sans">GitHub triggers `/github/webhook` payload.</p>
           </div>
 
-          <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2 relative overflow-hidden group hover:border-cyan-500/40 transition-all">
+          <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-1.5">
             <div className="flex items-center justify-between">
-              <span className="w-6 h-6 rounded-full bg-cyan-500/20 text-cyan-400 font-extrabold text-xs flex items-center justify-center border border-cyan-500/30">3</span>
-              <Zap className="w-4 h-4 text-slate-500" />
+              <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 font-extrabold text-[10px] flex items-center justify-center border border-blue-500/30">3</span>
+              <Zap className="w-4 h-4 text-blue-400" />
             </div>
-            <h4 className="font-bold text-white">3. Automated Code Audit</h4>
-            <p className="text-[11px] text-slate-400 font-sans">Semgrep SAST & Llama 3.3 AI audit changed Python code line-by-line.</p>
+            <h4 className="font-bold text-white text-[11px]">AI Code Audit</h4>
+            <p className="text-[10px] text-slate-400 font-sans">Semgrep & AI audit changed code line-by-line.</p>
           </div>
 
-          <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2 relative overflow-hidden group hover:border-cyan-500/40 transition-all">
+          <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-1.5">
             <div className="flex items-center justify-between">
-              <span className="w-6 h-6 rounded-full bg-cyan-500/20 text-cyan-400 font-extrabold text-xs flex items-center justify-center border border-cyan-500/30">4</span>
-              <ShieldCheck className="w-4 h-4 text-slate-500" />
+              <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 font-extrabold text-[10px] flex items-center justify-center border border-emerald-500/30">4</span>
+              <MessageSquare className="w-4 h-4 text-emerald-400" />
             </div>
-            <h4 className="font-bold text-white">4. Track & Review Code</h4>
-            <p className="text-[11px] text-slate-400 font-sans">Inspect pushed code reviews, security findings & deployment verdicts below.</p>
+            <h4 className="font-bold text-white text-[11px]">Auto PR Comment</h4>
+            <p className="text-[10px] text-slate-400 font-sans">Posts Markdown review comments back to GitHub PR.</p>
+          </div>
+
+          <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-400 font-extrabold text-[10px] flex items-center justify-center border border-indigo-500/30">5</span>
+              <Layers className="w-4 h-4 text-indigo-400" />
+            </div>
+            <h4 className="font-bold text-white text-[11px]">Project Section</h4>
+            <p className="text-[10px] text-slate-400 font-sans">Audits tracked in horizontal project rows.</p>
           </div>
         </div>
       </div>
@@ -258,8 +312,8 @@ export default function GitHubSettings({ currentUser }) {
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
           }`}
         >
-          <GitPullRequest className="w-4 h-4" />
-          <span>Pushed Code Reviews ({filteredScans.length})</span>
+          <Layers className="w-4 h-4" />
+          <span>Horizontal Project Sections ({Object.keys(projectGroups).length})</span>
         </button>
 
         <button
@@ -271,7 +325,7 @@ export default function GitHubSettings({ currentUser }) {
           }`}
         >
           <Search className="w-4 h-4" />
-          <span>Audit Repo URL / Test Push</span>
+          <span>Audit Repo URL / Test Webhook</span>
         </button>
 
         <button
@@ -287,16 +341,16 @@ export default function GitHubSettings({ currentUser }) {
         </button>
       </div>
 
-      {/* ================= TAB 1: Pushed Code Tracker & Reviews ================= */}
+      {/* ================= TAB 1: Horizontal Project Sections ================= */}
       {activeSubTab === 'tracker' && (
-        <div className="space-y-6">
+        <div className="space-y-8">
           {/* Filter Bar */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 glass-box p-4 rounded-2xl">
             <div className="relative flex-1 w-full">
               <Search className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search pushed repository, pusher, or commit..."
+                placeholder="Search project repository, branch, or author..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 bg-slate-900/90 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-cyan-500/50"
@@ -336,117 +390,152 @@ export default function GitHubSettings({ currentUser }) {
             </div>
           </div>
 
-          {/* Webhook Projects / Push Event List */}
-          {filteredScans.length === 0 ? (
+          {/* Render Each Project as a Separate Horizontal Section */}
+          {Object.keys(projectGroups).length === 0 ? (
             <div className="glass-box p-12 text-center rounded-3xl space-y-3">
               <div className="p-4 bg-slate-900/80 rounded-full w-14 h-14 mx-auto flex items-center justify-center text-slate-500 border border-slate-800">
-                <GitPullRequest className="w-7 h-7" />
+                <FolderGit2 className="w-7 h-7" />
               </div>
-              <h4 className="text-base font-bold text-white">No Webhook Push Reviews Yet</h4>
+              <h4 className="text-base font-bold text-white">No Webhook Projects Found</h4>
               <p className="text-xs text-slate-400 max-w-md mx-auto">
-                No code has been pushed to your webhook endpoint yet. Push code to your GitHub repo or click <strong>Test Webhook Push</strong> above to generate a sample code review report.
+                No webhook audits received yet. Click <strong>Test PR Webhook</strong> or <strong>Test Push Webhook</strong> above to generate sample project audits.
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4">
-              {filteredScans.map((scan, idx) => {
-                const repoName = scan.repository || scan.metadata?.repository || scan.project_name || scan.file || 'GitHub Repository'
-                const branch = scan.branch || scan.metadata?.branch || 'main'
-                const pusher = scan.metadata?.pusher || scan.username || 'git-pusher'
-                const timestamp = scan.timestamp ? new Date(scan.timestamp).toLocaleString() : 'Just now'
-                const totalIssues = scan.summary?.total_issues ?? (scan.files?.reduce((acc, f) => acc + (f.findings_count || 0), 0) || 0)
-                const criticalCount = scan.summary?.critical_issues || scan.critical_count || 0
-                const highCount = scan.summary?.high_issues || 0
+            Object.entries(projectGroups).map(([repoName, projectScans]) => {
+              const latestScan = projectScans[0] || {}
+              const totalAudits = projectScans.length
+              const criticalCount = projectScans.reduce((acc, s) => acc + (s.summary?.critical_issues || s.critical_count || 0), 0)
+              const highCount = projectScans.reduce((acc, s) => acc + (s.summary?.high_issues || 0), 0)
+              const hasCritical = criticalCount > 0
+              const overallVerdict = hasCritical ? 'BLOCK' : highCount > 0 ? 'WARN' : 'APPROVE'
 
-                const canDeploy = scan.can_deploy !== false && criticalCount === 0
-                const verdictLabel = scan.verdict?.decision || (canDeploy ? 'APPROVE' : 'BLOCK')
-
-                return (
-                  <div
-                    key={scan.scan_id || idx}
-                    className="glass-box p-5 rounded-2xl hover:border-slate-700 transition-all space-y-4"
-                  >
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                      <div className="flex items-center space-x-3">
-                        <div className={`p-3 rounded-2xl border ${
-                          verdictLabel === 'APPROVE'
-                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                            : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-                        }`}>
-                          <Github className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <div className="flex items-center space-x-2">
-                            <h4 className="font-extrabold text-sm text-white font-heading">{repoName}</h4>
-                            <span className="px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800 text-[10px] font-mono text-cyan-400 flex items-center space-x-1">
-                              <GitBranch className="w-3 h-3" />
-                              <span>{branch}</span>
-                            </span>
-                          </div>
-                          <div className="flex items-center space-x-3 text-[11px] text-slate-400 font-mono mt-1">
-                            <span className="flex items-center space-x-1">
-                              <User className="w-3 h-3 text-slate-500" />
-                              <span>Pushed by: <strong className="text-slate-300">{pusher}</strong></span>
-                            </span>
-                            <span>&bull;</span>
-                            <span className="flex items-center space-x-1">
-                              <Clock className="w-3 h-3 text-slate-500" />
-                              <span>{timestamp}</span>
-                            </span>
-                          </div>
-                        </div>
+              return (
+                <div key={repoName} className="glass-box p-6 rounded-3xl space-y-5 border border-slate-800/90 hover:border-slate-700 transition-all">
+                  {/* Horizontal Project Header Bar */}
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-800/80">
+                    <div className="flex items-center space-x-3">
+                      <div className="p-3 rounded-2xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                        <FolderGit2 className="w-6 h-6" />
                       </div>
-
-                      <div className="flex items-center space-x-3">
-                        <span className={`px-3 py-1 rounded-full text-xs font-mono font-bold flex items-center space-x-1 border ${
-                          verdictLabel === 'APPROVE'
-                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                            : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
-                        }`}>
-                          {verdictLabel === 'APPROVE' ? <CheckCircle className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
-                          <span>Verdict: {verdictLabel}</span>
-                        </span>
-
-                        <button
-                          onClick={() => setSelectedScan(scan)}
-                          className="px-3.5 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-semibold font-mono transition-all flex items-center space-x-1.5"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>Review Pushed Code</span>
-                        </button>
+                      <div>
+                        <div className="flex items-center space-x-3">
+                          <h3 className="text-base font-extrabold text-white font-heading">{repoName}</h3>
+                          <span className="px-2.5 py-0.5 rounded-full bg-slate-900 border border-slate-800 text-[10px] font-mono text-cyan-400">
+                            {totalAudits} Audit(s)
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-400 font-mono mt-0.5">
+                          Last activity: {latestScan.timestamp ? new Date(latestScan.timestamp).toLocaleString() : 'Recently'}
+                        </p>
                       </div>
                     </div>
 
-                    {/* Summary metrics strip */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-800/60 text-xs font-mono">
-                      <div className="p-2 rounded-xl bg-slate-900/60 border border-slate-800/80 flex items-center justify-between">
-                        <span className="text-slate-400">Total Findings:</span>
-                        <span className="font-bold text-white">{totalIssues}</span>
-                      </div>
-                      <div className="p-2 rounded-xl bg-slate-900/60 border border-slate-800/80 flex items-center justify-between">
-                        <span className="text-slate-400">Critical Issues:</span>
-                        <span className={`font-bold ${criticalCount > 0 ? 'text-rose-400' : 'text-slate-400'}`}>{criticalCount}</span>
-                      </div>
-                      <div className="p-2 rounded-xl bg-slate-900/60 border border-slate-800/80 flex items-center justify-between">
-                        <span className="text-slate-400">High Severity:</span>
-                        <span className={`font-bold ${highCount > 0 ? 'text-amber-400' : 'text-slate-400'}`}>{highCount}</span>
-                      </div>
-                      <div className="p-2 rounded-xl bg-slate-900/60 border border-slate-800/80 flex items-center justify-between">
-                        <span className="text-slate-400">Deploy Safe:</span>
-                        <span className={`font-bold ${canDeploy ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          {canDeploy ? 'YES' : 'NO'}
-                        </span>
-                      </div>
+                    <div className="flex items-center space-x-2 shrink-0">
+                      <button
+                        onClick={() => handleSimulatePR(repoName)}
+                        className="px-3 py-1.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30 text-xs font-mono font-bold transition-all flex items-center space-x-1.5"
+                      >
+                        <GitPullRequest className="w-3.5 h-3.5" />
+                        <span>Test PR Webhook</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleSimulatePush(repoName)}
+                        className="px-3 py-1.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 text-xs font-mono font-bold transition-all flex items-center space-x-1.5"
+                      >
+                        <Play className="w-3.5 h-3.5" />
+                        <span>Test Push Webhook</span>
+                      </button>
+
+                      <span className={`px-3 py-1.5 rounded-full text-xs font-mono font-bold flex items-center space-x-1 border ${
+                        overallVerdict === 'APPROVE'
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                          : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                      }`}>
+                        {overallVerdict === 'APPROVE' ? <CheckCircle className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
+                        <span>Project Status: {overallVerdict}</span>
+                      </span>
                     </div>
                   </div>
-                )
-              })}
-            </div>
+
+                  {/* Horizontal Scrollable Cards Track for this Project */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs font-mono text-slate-400 px-1">
+                      <span>Pushed Code & Pull Request Audits</span>
+                      <span className="text-[11px] text-slate-500">Scroll horizontally &rarr;</span>
+                    </div>
+
+                    <div className="flex space-x-4 overflow-x-auto pb-4 pt-1 scrollbar-thin scrollbar-thumb-slate-800">
+                      {projectScans.map((scan, idx) => {
+                        const isPR = scan.scan_type === 'github_pr' || scan.event_type === 'pull_request' || scan.pr_number
+                        const prNumber = scan.pr_number || scan.metadata?.pr_number
+                        const branch = scan.branch || scan.metadata?.branch || 'main'
+                        const author = scan.pr_author || scan.metadata?.pusher || scan.username || 'developer'
+                        const timestamp = scan.timestamp ? new Date(scan.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Now'
+                        const issuesCount = scan.summary?.total_issues ?? (scan.files?.reduce((acc, f) => acc + (f.findings_count || 0), 0) || 0)
+                        const verdictLabel = scan.verdict?.decision || (scan.can_deploy === false ? 'BLOCK' : 'APPROVE')
+
+                        return (
+                          <div
+                            key={scan.scan_id || idx}
+                            className="w-80 shrink-0 p-4 rounded-2xl bg-slate-900/90 border border-slate-800/90 hover:border-slate-700 transition-all space-y-3 flex flex-col justify-between"
+                          >
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className={`px-2.5 py-0.5 rounded-md font-mono text-[10px] font-bold flex items-center space-x-1 border ${
+                                  isPR
+                                    ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+                                    : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
+                                }`}>
+                                  {isPR ? <GitPullRequest className="w-3 h-3" /> : <GitCommit className="w-3 h-3" />}
+                                  <span>{isPR ? `PR #${prNumber || '1'}` : 'PUSH'}</span>
+                                </span>
+
+                                <span className="text-[10px] text-slate-500 font-mono">{timestamp}</span>
+                              </div>
+
+                              <h4 className="text-xs font-extrabold text-white line-clamp-1 font-heading">
+                                {scan.pr_title || scan.message || `Audit on ${branch}`}
+                              </h4>
+
+                              <div className="flex items-center space-x-2 text-[11px] text-slate-400 font-mono">
+                                <User className="w-3 h-3 text-slate-500" />
+                                <span className="truncate">{author}</span>
+                                <span>&bull;</span>
+                                <span className="text-cyan-400 font-bold">{branch}</span>
+                              </div>
+                            </div>
+
+                            <div className="pt-3 border-t border-slate-800/70 flex items-center justify-between">
+                              <div className="text-[11px] font-mono">
+                                <span className="text-slate-400">Issues: </span>
+                                <span className={`font-bold ${issuesCount > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                  {issuesCount}
+                                </span>
+                              </div>
+
+                              <button
+                                onClick={() => setSelectedScan(scan)}
+                                className="px-3 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-mono font-semibold transition-all flex items-center space-x-1"
+                              >
+                                <Eye className="w-3 h-3" />
+                                <span>Review</span>
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )
+            })
           )}
         </div>
       )}
 
-      {/* ================= TAB 2: Manual Repo Audit & Push Test ================= */}
+      {/* ================= TAB 2: Manual Repo Audit & Webhook Test ================= */}
       {activeSubTab === 'audit' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="lg:col-span-7 glass-box p-6 rounded-3xl space-y-6">
@@ -506,31 +595,32 @@ export default function GitHubSettings({ currentUser }) {
             <div className="space-y-3">
               <h3 className="text-base font-bold text-white flex items-center space-x-2">
                 <Play className="w-4 h-4 text-purple-400" />
-                <span>Simulate Webhook Push Event</span>
+                <span>Simulate PR & Push Webhooks</span>
               </h3>
               <p className="text-xs text-slate-400">
-                Want to test pushed code review without opening your terminal? Click below to send a sample webhook push payload directly to the system.
+                Test how PR webhooks automatically post review comments back to GitHub without needing a terminal push.
               </p>
             </div>
 
-            <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2 text-xs font-mono text-slate-400">
-              <div className="flex items-center space-x-2 text-cyan-400 font-bold">
-                <Terminal className="w-4 h-4" />
-                <span>Simulated Payload Info:</span>
-              </div>
-              <p>&bull; Repo: <code className="text-slate-200">ssathyasai/CodeReviewSystem</code></p>
-              <p>&bull; Event: <code className="text-slate-200">push (refs/heads/main)</code></p>
-              <p>&bull; Changed files: <code className="text-slate-200">backend/payment_gateway.py</code></p>
-            </div>
+            <div className="space-y-2">
+              <button
+                onClick={() => handleSimulatePR('ssathyasai/CodeReviewSystem')}
+                disabled={isSimulatingPR}
+                className="w-full py-3 rounded-2xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/40 font-extrabold text-xs font-mono flex items-center justify-center space-x-2 transition-all"
+              >
+                <GitPullRequest className={`w-4 h-4 ${isSimulatingPR ? 'animate-spin' : ''}`} />
+                <span>{isSimulatingPR ? 'Analyzing PR...' : 'Test PR Webhook & Auto-Comment'}</span>
+              </button>
 
-            <button
-              onClick={handleSimulatePush}
-              disabled={isSimulatingPush}
-              className="w-full py-3 rounded-2xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/40 font-extrabold text-xs font-mono flex items-center justify-center space-x-2 transition-all"
-            >
-              <Play className={`w-4 h-4 ${isSimulatingPush ? 'animate-spin' : ''}`} />
-              <span>{isSimulatingPush ? 'Generating Review...' : 'Trigger Test Push Event'}</span>
-            </button>
+              <button
+                onClick={() => handleSimulatePush('ssathyasai/CodeReviewSystem')}
+                disabled={isSimulatingPush}
+                className="w-full py-3 rounded-2xl bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 border border-cyan-500/40 font-extrabold text-xs font-mono flex items-center justify-center space-x-2 transition-all"
+              >
+                <Play className={`w-4 h-4 ${isSimulatingPush ? 'animate-spin' : ''}`} />
+                <span>{isSimulatingPush ? 'Simulating Push...' : 'Test Push Webhook'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -538,7 +628,6 @@ export default function GitHubSettings({ currentUser }) {
       {/* ================= TAB 3: Webhook Setup & Credentials ================= */}
       {activeSubTab === 'credentials' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Setup Guide */}
           <div className="lg:col-span-7 glass-box p-6 rounded-3xl space-y-6">
             <h3 className="text-base font-bold text-white flex items-center space-x-2">
               <Terminal className="w-4 h-4 text-cyan-400" />
@@ -565,14 +654,13 @@ export default function GitHubSettings({ currentUser }) {
               <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-1.5">
                 <div className="font-bold text-white flex items-center space-x-2">
                   <span className="w-5 h-5 rounded-full bg-blue-600/30 text-cyan-400 flex items-center justify-center font-mono text-[10px] border border-cyan-500/30">3</span>
-                  <span>Set HMAC Secret & Select Push Events</span>
+                  <span>Select Push & Pull Request Events</span>
                 </div>
-                <p className="text-slate-400 pl-7">Paste your secret key into the Secret field and select "Just the push event".</p>
+                <p className="text-slate-400 pl-7">Select "Pushes" and "Pull requests" so CodeIntelligence automatically reviews PRs and pushes.</p>
               </div>
             </div>
           </div>
 
-          {/* Credentials */}
           <div className="lg:col-span-5 glass-box p-6 rounded-3xl space-y-6">
             <h3 className="text-base font-bold text-white flex items-center space-x-2">
               <Lock className="w-4 h-4 text-purple-400" />
@@ -620,7 +708,7 @@ export default function GitHubSettings({ currentUser }) {
         </div>
       )}
 
-      {/* ================= DETAILED PUSHED CODE REVIEW MODAL ================= */}
+      {/* ================= DETAILED PR & CODE REVIEW MODAL ================= */}
       {selectedScan && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
           <div className="glass-box max-w-4xl w-full rounded-3xl p-6 sm:p-8 space-y-6 max-h-[90vh] overflow-y-auto relative border border-slate-700 shadow-2xl">
@@ -628,7 +716,7 @@ export default function GitHubSettings({ currentUser }) {
               <div className="space-y-1">
                 <div className="flex items-center space-x-2">
                   <span className="px-2.5 py-1 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-[11px] font-mono font-bold">
-                    Pushed Code Review Report
+                    {selectedScan.scan_type === 'github_pr' ? 'GitHub Pull Request Review' : 'Pushed Code Review Report'}
                   </span>
                   <span className="text-xs text-slate-400 font-mono">
                     ID: {selectedScan.scan_id?.substring(0, 8)}
@@ -660,11 +748,29 @@ export default function GitHubSettings({ currentUser }) {
                     Verdict: {selectedScan.verdict?.decision || (selectedScan.can_deploy !== false ? 'APPROVED' : 'BLOCKED')}
                   </h4>
                   <p className="text-xs opacity-90">
-                    {selectedScan.message || selectedScan.verdict?.reason || 'Push security audit evaluation complete.'}
+                    {selectedScan.message || selectedScan.verdict?.reason || 'Push & PR audit evaluation complete.'}
                   </p>
                 </div>
               </div>
             </div>
+
+            {/* Automated PR Review Comment Markdown Box (If PR scan) */}
+            {selectedScan.pr_comment_markdown && (
+              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2 font-mono text-xs text-slate-200">
+                <div className="flex items-center justify-between text-purple-400 font-bold border-b border-slate-800 pb-2">
+                  <span className="flex items-center space-x-2">
+                    <MessageSquare className="w-4 h-4" />
+                    <span>Automated Comment Posted to GitHub PR #{selectedScan.pr_number || '42'}</span>
+                  </span>
+                  <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                    GitHub API Status: {selectedScan.github_comment_posted ? 'Posted' : 'Simulated'}
+                  </span>
+                </div>
+                <pre className="p-3 rounded-xl bg-slate-950 overflow-x-auto text-[11px] text-cyan-300 font-mono whitespace-pre-wrap">
+                  {selectedScan.pr_comment_markdown}
+                </pre>
+              </div>
+            )}
 
             {/* Changed Files Breakdown */}
             <div className="space-y-4">
@@ -683,7 +789,6 @@ export default function GitHubSettings({ currentUser }) {
                     const filePath = fileObj.path || fileObj.filename || `file_${idx}`
                     const engines = fileObj.engines || {}
 
-                    // Flatten findings from engines
                     const findings = []
                     if (engines.sast?.findings) findings.push(...engines.sast.findings.map(f => ({ ...f, source: 'SAST Semgrep' })))
                     if (engines.governance?.findings) findings.push(...engines.governance.findings.map(f => ({ ...f, source: 'AI Governance' })))

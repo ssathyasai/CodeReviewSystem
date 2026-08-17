@@ -144,6 +144,143 @@ class GitHubIntegration:
                 "message": str(e)
             }
     
+    async def handle_pull_request_event(self, payload: Dict) -> Dict:
+        """
+        Handle GitHub Pull Request webhook event:
+        1. Extract PR info (action, repo, PR#, branch, author)
+        2. Clone PR source branch and run security analysis
+        3. Format automated review comment
+        4. Post review comment back to GitHub PR via API
+        """
+        try:
+            action = payload.get('action', 'opened')
+            pr_data = payload.get('pull_request', {})
+            pr_number = pr_data.get('number', payload.get('number', 1))
+            pr_title = pr_data.get('title', 'Pull Request Audit')
+            pr_author = pr_data.get('user', {}).get('login') or payload.get('pusher', {}).get('name', 'developer')
+            
+            repo_data = payload.get('repository', {})
+            repo_name = repo_data.get('full_name', 'ssathyasai/CodeReviewSystem')
+            repo_url = repo_data.get('clone_url') or f"https://github.com/{repo_name}.git"
+            
+            head_branch = pr_data.get('head', {}).get('ref') or 'main'
+            base_branch = pr_data.get('base', {}).get('ref') or 'main'
+            
+            print(f"\n{'='*60}")
+            print(f"🔀 GitHub Pull Request Webhook Event Received")
+            print(f"{'='*60}")
+            print(f"Action: {action}")
+            print(f"Repository: {repo_name}")
+            print(f"PR #{pr_number}: {pr_title}")
+            print(f"Author: {pr_author}")
+            print(f"Head Branch: {head_branch} -> Base Branch: {base_branch}")
+            print(f"{'='*60}\n")
+            
+            clone_path = await self.clone_repository(repo_url, head_branch)
+            if not clone_path:
+                return {
+                    "status": "error",
+                    "message": f"Failed to clone PR branch '{head_branch}'"
+                }
+            
+            try:
+                results = await self.analyze_repository(
+                    clone_path,
+                    changed_files=[],
+                    repo_name=repo_name,
+                    branch=head_branch
+                )
+                
+                results['scan_type'] = 'github_pr'
+                results['event_type'] = 'pull_request'
+                results['pr_number'] = pr_number
+                results['pr_title'] = pr_title
+                results['pr_author'] = pr_author
+                results['pr_action'] = action
+                results['metadata'] = {
+                    'repository': repo_name,
+                    'branch': head_branch,
+                    'base_branch': base_branch,
+                    'pusher': pr_author,
+                    'pr_number': pr_number,
+                    'pr_title': pr_title,
+                    'commit_count': 1,
+                    'changed_files': [f['path'] for f in results.get('files', [])]
+                }
+                
+                comment_text = self.format_pr_comment_markdown(results)
+                results['pr_comment_markdown'] = comment_text
+                
+                post_status = await self.post_pr_comment(repo_name, pr_number, comment_text)
+                results['github_comment_posted'] = post_status.get('success', False)
+                results['github_comment_response'] = post_status.get('message', '')
+                
+                return results
+            finally:
+                self.cleanup_repository(clone_path)
+                
+        except Exception as e:
+            print(f"❌ Error handling pull request event: {e}")
+            import traceback
+            traceback.print_exc()
+            return {"status": "error", "message": str(e)}
+
+    def format_pr_comment_markdown(self, results: Dict) -> str:
+        """Format an automated code review comment for GitHub Pull Request"""
+        verdict = results.get('status', 'success').upper()
+        msg = results.get('message', 'Review complete')
+        summary = results.get('summary', {})
+        files = results.get('files', [])
+        
+        icon = "✅" if verdict in ['SUCCESS', 'INFO'] else "⚠️" if verdict == 'WARNING' else "🚨"
+        
+        md = f"### {icon} CodeIntelligence Automated PR Review\n\n"
+        md += f"**Verdict**: `{verdict}` — {msg}\n\n"
+        md += f"| Metric | Count |\n| --- | --- |\n"
+        md += f"| 🚨 Critical | {summary.get('critical_issues', 0)} |\n"
+        md += f"| ⚠️ High | {summary.get('high_issues', 0)} |\n"
+        md += f"| ⚡ Medium | {summary.get('medium_issues', 0)} |\n"
+        md += f"| ℹ️ Total Issues | {summary.get('total_issues', 0)} |\n\n"
+        
+        if files:
+            md += "#### 📁 Audited Code Files\n"
+            for f in files:
+                md += f"- `{f.get('path')}` ({f.get('findings_count', 0)} issue(s))\n"
+                
+        md += "\n---\n*Automated review by CodeIntelligence Agent • OWASP & SAST Enforced*"
+        return md
+
+    async def post_pr_comment(self, repo_name: str, pr_number: int, review_body: str) -> Dict:
+        """Post review comment to GitHub Pull Request via GitHub REST API"""
+        token = os.getenv("GITHUB_TOKEN")
+        if not token:
+            print("[GitHub Notice] GITHUB_TOKEN not configured in .env. Skipping live API comment posting.")
+            return {"success": False, "message": "GITHUB_TOKEN missing in server environment"}
+            
+        try:
+            import urllib.request
+            url = f"https://api.github.com/repos/{repo_name}/issues/{pr_number}/comments"
+            data = json.dumps({"body": review_body}).encode('utf-8')
+            req = urllib.request.Request(
+                url,
+                data=data,
+                headers={
+                    "Authorization": f"token {token}",
+                    "Accept": "application/vnd.github.v3+json",
+                    "User-Agent": "CodeReviewAgent/2.0",
+                    "Content-Type": "application/json"
+                },
+                method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                if resp.status in [200, 201]:
+                    print(f"✅ Successfully posted automated comment to GitHub PR #{pr_number}")
+                    return {"success": True, "message": f"Posted review comment to PR #{pr_number}"}
+                return {"success": False, "message": f"HTTP {resp.status}"}
+        except Exception as e:
+            print(f"❌ Failed to post PR comment to GitHub API: {e}")
+            return {"success": False, "message": str(e)}
+    
     async def clone_repository(self, repo_url: str, branch: str = "main") -> Optional[str]:
         """
         Clone or download GitHub repository to temporary directory.

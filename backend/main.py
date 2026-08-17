@@ -345,10 +345,11 @@ async def scan_github_repo(request: dict = Body(...)):
 
 @app.post("/github/webhook")
 async def github_webhook(request: Request):
-    """Secure GitHub Webhook Receiver with mandatory HMAC SHA-256 Signature Verification"""
+    """Secure GitHub Webhook Receiver with HMAC SHA-256 Verification (Push & Pull Request events)"""
     try:
         raw_body = await request.body()
         signature = request.headers.get("X-Hub-Signature-256", "")
+        event_header = request.headers.get("X-GitHub-Event", "")
         
         # Verify HMAC Signature
         if not github_integration.verify_signature(raw_body, signature):
@@ -358,17 +359,19 @@ async def github_webhook(request: Request):
             )
         
         payload = json.loads(raw_body.decode('utf-8'))
-        event_type = payload.get('ref', '').startswith('refs/heads/')
         
-        if not event_type:
-            return JSONResponse(status_code=400, content={"error": "Only push events are supported"})
-        
-        results = await github_integration.handle_push_event(payload)
+        # Route pull_request vs push event
+        if event_header == "pull_request" or "pull_request" in payload:
+            results = await github_integration.handle_pull_request_event(payload)
+        elif event_header == "push" or payload.get('ref', '').startswith('refs/heads/'):
+            results = await github_integration.handle_push_event(payload)
+        else:
+            return JSONResponse(status_code=400, content={"error": "Unsupported event type. Only push and pull_request are supported."})
         
         # Save scan report
         scan_id = str(uuid.uuid4())
         results["scan_id"] = scan_id
-        results["scan_type"] = "github_webhook"
+        results["scan_type"] = results.get("scan_type", "github_webhook")
         results["is_webhook"] = True
         results["timestamp"] = datetime.now().isoformat()
         db_save_scan(results)
@@ -418,6 +421,114 @@ async def simulate_github_push(request: dict = Body(...)):
             "medium_issues": 1,
             "low_issues": 0
         },
+        "files": [
+            {
+                "path": "backend/payment_gateway.py",
+                "status": "analyzed",
+                "findings_count": 2,
+                "summary": {"critical": 0, "high": 1, "medium": 1, "low": 0},
+                "engines": {
+                    "sast": {
+                        "status": "warning",
+                        "findings": [
+                            {
+                                "line": 42,
+                                "issue": "Hardcoded secret key or sensitive token detected in payment headers",
+                                "severity": "HIGH",
+                                "rule_id": "python.lang.security.hardcoded-token",
+                                "recommendation": "Use environment variables `os.getenv('PAYMENT_API_KEY')` instead of hardcoded strings."
+                            }
+                        ]
+                    },
+                    "governance": {
+                        "status": "warning",
+                        "findings": [
+                            {
+                                "line": 58,
+                                "issue": "OWASP A02: Cryptographic Failure - Weak MD5 algorithm used for signature check",
+                                "severity": "MEDIUM",
+                                "rule_id": "gov.owasp.a02",
+                                "recommendation": "Upgrade hash algorithm to SHA-256 (e.g. hashlib.sha256)."
+                            }
+                        ]
+                    },
+                    "dast": {"status": "clean", "findings": []}
+                }
+            }
+        ]
+    }
+    
+    db_save_scan(simulated_results)
+    
+    await manager.broadcast({
+        "type": "github_analysis_complete",
+        "data": simulated_results
+    })
+    
+    return JSONResponse(content=simulated_results)
+
+@app.post("/github/simulate-pr")
+async def simulate_github_pr(request: dict = Body(...)):
+    """Simulate receiving a GitHub Pull Request webhook event and generating an automated review comment"""
+    repo_name = request.get("repo_name", "ssathyasai/CodeReviewSystem")
+    pr_number = request.get("pr_number", 42)
+    pr_title = request.get("pr_title", "feat: add payment authentication security check")
+    author = request.get("author", "dev-contributor")
+    branch = request.get("branch", "feature/security-fix")
+    
+    scan_id = str(uuid.uuid4())
+    simulated_results = {
+        "scan_id": scan_id,
+        "scan_type": "github_pr",
+        "event_type": "pull_request",
+        "is_webhook": True,
+        "timestamp": datetime.now().isoformat(),
+        "repository": repo_name,
+        "branch": branch,
+        "pr_number": pr_number,
+        "pr_title": pr_title,
+        "pr_author": author,
+        "files_analyzed": 2,
+        "status": "warning",
+        "can_deploy": False,
+        "message": "Found 1 high severity issue. PR review comment generated.",
+        "github_comment_posted": True,
+        "github_comment_response": f"Simulated posting review comment to PR #{pr_number}",
+        "metadata": {
+            "repository": repo_name,
+            "branch": branch,
+            "pusher": author,
+            "pr_number": pr_number,
+            "pr_title": pr_title,
+            "commit_count": 1,
+            "changed_files": ["backend/payment_gateway.py", "backend/main.py"]
+        },
+        "summary": {
+            "total_issues": 2,
+            "critical_issues": 0,
+            "high_issues": 1,
+            "medium_issues": 1,
+            "low_issues": 0
+        },
+        "pr_comment_markdown": f"""### ⚠️ CodeIntelligence Automated PR Review
+
+**Verdict**: `WARNING` — Found 1 high severity security issue in Pull Request #{pr_number}.
+
+| Metric | Count |
+| --- | --- |
+| 🚨 Critical | 0 |
+| ⚠️ High | 1 |
+| ⚡ Medium | 1 |
+| ℹ️ Total Issues | 2 |
+
+#### 📁 Audited Code Files
+- `backend/payment_gateway.py` (2 issue(s))
+
+**Line 42**: Hardcoded API secret detected in payment header.
+*AI Recommendation*: Replace hardcoded secret with `os.getenv('PAYMENT_API_KEY')`.
+
+---
+*Automated review by CodeIntelligence Agent • OWASP & SAST Enforced*""",
         "files": [
             {
                 "path": "backend/payment_gateway.py",
