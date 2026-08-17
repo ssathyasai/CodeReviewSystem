@@ -388,7 +388,7 @@ async def github_webhook(request: Request):
 @app.post("/github/simulate-push")
 async def simulate_github_push(request: dict = Body(...)):
     """Simulate receiving a GitHub push webhook event for testing and previewing code review UI"""
-    repo_name = request.get("repo_name", "acme-corp/payment-service")
+    repo_name = request.get("repo_name", "ssathyasai/CodeReviewSystem")
     branch = request.get("branch", "main")
     pusher = request.get("pusher", "alex-developer")
     

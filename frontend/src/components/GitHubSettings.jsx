@@ -126,7 +126,7 @@ export default function GitHubSettings({ currentUser }) {
     setSimulationNotice(null)
     try {
       const res = await axios.post('/github/simulate-push', {
-        repo_name: 'acme-inc/secure-payment-gateway',
+        repo_name: 'ssathyasai/CodeReviewSystem',
         branch: 'main',
         pusher: currentUser?.username || 'alex-dev'
       })
@@ -518,7 +518,7 @@ export default function GitHubSettings({ currentUser }) {
                 <Terminal className="w-4 h-4" />
                 <span>Simulated Payload Info:</span>
               </div>
-              <p>&bull; Repo: <code className="text-slate-200">acme-inc/secure-payment-gateway</code></p>
+              <p>&bull; Repo: <code className="text-slate-200">ssathyasai/CodeReviewSystem</code></p>
               <p>&bull; Event: <code className="text-slate-200">push (refs/heads/main)</code></p>
               <p>&bull; Changed files: <code className="text-slate-200">backend/payment_gateway.py</code></p>
             </div>
