@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { ShieldCheck, AlertTriangle, CheckCircle, Database, Cpu, Zap, ArrowRight, Play, Sparkles, Layers, Github, Activity, ShieldAlert, FileCode } from 'lucide-react'
 import axios from 'axios'
 
-export default function Dashboard({ setActiveTab }) {
+export default function Dashboard({ setActiveTab, currentUser }) {
   const [stats, setStats] = useState({
     totalScans: 0,
     criticalCount: 0,
@@ -14,12 +14,13 @@ export default function Dashboard({ setActiveTab }) {
 
   useEffect(() => {
     fetchDashboardData()
-  }, [])
+  }, [currentUser])
 
   const fetchDashboardData = async () => {
     try {
       setLoading(true)
-      const scansRes = await axios.get('/scans?limit=10').catch(() => ({ data: { scans: [] } }))
+      const usernameParam = currentUser?.username ? `?username=${currentUser.username}` : '?limit=10'
+      const scansRes = await axios.get(`/scans${usernameParam}`).catch(() => ({ data: { scans: [] } }))
       const scans = scansRes.data.scans || []
 
       let critical = 0

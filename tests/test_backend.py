@@ -33,6 +33,19 @@ async def test_list_scans():
         assert response.status_code == 200
         assert "scans" in response.json()
 
+@pytest.mark.anyio
+async def test_user_auth():
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        import uuid
+        test_user = f"testuser_{uuid.uuid4().hex[:6]}"
+        reg_res = await client.post("/auth/register", json={"username": test_user, "email": f"{test_user}@test.com", "password": "password123"})
+        assert reg_res.status_code == 200
+        
+        login_res = await client.post("/auth/login", json={"username": test_user, "password": "password123"})
+        assert login_res.status_code == 200
+        assert login_res.json().get("status") == "success"
+
 def test_sast_engine_sqli_detection(tmp_path):
     test_file = tmp_path / "vulnerable.py"
     code = "import sqlite3\nuser_input = '1 OR 1=1'\nconn = sqlite3.connect(':memory:')\ncursor = conn.cursor()\ncursor.execute(f'SELECT * FROM users WHERE id = {user_input}')\n"

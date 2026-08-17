@@ -1,7 +1,7 @@
 import React from 'react'
-import { ShieldCheck, LayoutDashboard, FileCode, History, Github, Activity, Sparkles, Terminal, ChevronRight, Zap } from 'lucide-react'
+import { ShieldCheck, LayoutDashboard, FileCode, History, Github, Activity, Sparkles, Terminal, ChevronRight, Zap, User, LogOut, LogIn } from 'lucide-react'
 
-export default function SidebarNav({ activeTab, setActiveTab, systemStatus }) {
+export default function SidebarNav({ activeTab, setActiveTab, systemStatus, currentUser, onOpenAuth, onLogout }) {
   const menuItems = [
     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, badge: 'Live' },
     { id: 'scanner', label: 'Code Auditor', icon: FileCode, badge: 'SAST/DAST' },
@@ -73,20 +73,53 @@ export default function SidebarNav({ activeTab, setActiveTab, systemStatus }) {
         </nav>
       </div>
 
-      {/* Footer Status Panel */}
-      <div className="p-4 m-4 rounded-2xl bg-slate-900/90 border border-slate-800/80 space-y-3 font-mono text-[11px]">
-        <div className="flex items-center justify-between">
-          <span className="text-slate-400">Database:</span>
-          <span className="text-emerald-400 font-bold flex items-center space-x-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>MongoDB</span>
-          </span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-slate-400">Groq LLM:</span>
-          <span className={`font-bold ${systemStatus?.groq_working ? 'text-purple-400' : 'text-amber-400'}`}>
-            {systemStatus?.groq_working ? 'Llama 3.3 Ready' : 'Fallback Engine'}
-          </span>
+      {/* User Profile & Footer Status Panel */}
+      <div className="p-4 m-4 space-y-3">
+        {/* User Account Card */}
+        {currentUser ? (
+          <div className="p-3 rounded-2xl bg-slate-900/90 border border-slate-800 flex items-center justify-between">
+            <div className="flex items-center space-x-2.5 overflow-hidden">
+              <div className="p-2 rounded-xl bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30">
+                <User className="w-4 h-4" />
+              </div>
+              <div className="truncate">
+                <p className="text-xs font-bold text-white truncate font-heading">{currentUser.username}</p>
+                <p className="text-[10px] text-slate-400 font-mono truncate">{currentUser.email}</p>
+              </div>
+            </div>
+            <button
+              onClick={onLogout}
+              title="Sign Out"
+              className="p-1.5 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-rose-500/10 transition-all shrink-0"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={onOpenAuth}
+            className="w-full py-2.5 px-3 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-cyan-400 font-semibold text-xs font-mono flex items-center justify-center space-x-2 transition-all"
+          >
+            <LogIn className="w-4 h-4" />
+            <span>Sign In Account</span>
+          </button>
+        )}
+
+        {/* Status System Info */}
+        <div className="p-3 rounded-2xl bg-slate-900/50 border border-slate-800/60 space-y-2 font-mono text-[10px]">
+          <div className="flex items-center justify-between">
+            <span className="text-slate-500">Database:</span>
+            <span className="text-emerald-400 font-bold flex items-center space-x-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span>MongoDB</span>
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-slate-500">Groq LLM:</span>
+            <span className={`font-bold ${systemStatus?.groq_working ? 'text-purple-400' : 'text-amber-400'}`}>
+              {systemStatus?.groq_working ? 'Llama 3.3' : 'Fallback'}
+            </span>
+          </div>
         </div>
       </div>
     </aside>

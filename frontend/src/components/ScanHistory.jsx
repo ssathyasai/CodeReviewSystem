@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { History, Search, RefreshCw, Eye, CheckCircle, AlertTriangle, ShieldAlert, Code, FileText, X } from 'lucide-react'
 import axios from 'axios'
 
-export default function ScanHistory() {
+export default function ScanHistory({ currentUser }) {
   const [scans, setScans] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -10,12 +10,13 @@ export default function ScanHistory() {
 
   useEffect(() => {
     fetchScans()
-  }, [])
+  }, [currentUser])
 
   const fetchScans = async () => {
     try {
       setLoading(true)
-      const res = await axios.get('/scans?limit=50')
+      const usernameParam = currentUser?.username ? `?username=${currentUser.username}` : '?limit=50'
+      const res = await axios.get(`/scans${usernameParam}`)
       setScans(res.data.scans || [])
     } catch (err) {
       console.error('Failed to fetch scan history:', err)

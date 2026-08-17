@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { FileCode, Github, Upload, Play, AlertTriangle, CheckCircle, ShieldAlert, Sparkles, Cpu, Zap, Code, ArrowRight, Check, RefreshCw, Eye, ChevronDown } from 'lucide-react'
 import axios from 'axios'
 
-export default function Scanner() {
+export default function Scanner({ currentUser }) {
   const [scanType, setScanType] = useState('code') // 'code' or 'github'
   const [code, setCode] = useState('')
   const [githubUrl, setGithubUrl] = useState('')
@@ -54,6 +54,10 @@ def execute_user_query(query_param):
         formData.append('file', blob, 'source_code.py')
       }
 
+      if (currentUser?.username) {
+        formData.append('username', currentUser.username)
+      }
+
       const res = await axios.post('/scan', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
@@ -75,7 +79,8 @@ def execute_user_query(query_param):
     try {
       const res = await axios.post('/github/scan-repo', {
         repo_url: githubUrl.trim(),
-        branch: githubBranch.trim() || 'main'
+        branch: githubBranch.trim() || 'main',
+        username: currentUser?.username || null
       })
       setScanResult(res.data)
     } catch (err) {

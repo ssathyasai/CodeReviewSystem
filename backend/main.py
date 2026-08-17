@@ -6,7 +6,7 @@ backend_dir = os.path.dirname(__file__)
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Body, Request, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Body, Request, Query, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -50,7 +50,10 @@ from db import (
     init_db,
     save_scan as db_save_scan,
     get_scans as db_get_scans,
-    get_scan_by_id as db_get_scan_by_id
+    get_scan_by_id as db_get_scan_by_id,
+    create_user,
+    get_user_by_username,
+    verify_password
 )
 
 @app.on_event("startup")
@@ -132,12 +135,47 @@ async def llm_status():
     
     return status
 
+# ==================== User Authentication Endpoints ====================
+
+@app.post("/auth/register")
+async def register_user(payload: dict = Body(...)):
+    """Register a new user account"""
+    username = payload.get("username")
+    email = payload.get("email")
+    password = payload.get("password")
+    
+    if not username or not email or not password:
+        return JSONResponse(status_code=400, content={"error": "Username, email, and password are required"})
+        
+    result = create_user(username, email, password)
+    if result.get("status") == "error":
+        return JSONResponse(status_code=400, content={"error": result.get("message")})
+        
+    return {"status": "success", "user": result.get("user")}
+
+@app.post("/auth/login")
+async def login_user(payload: dict = Body(...)):
+    """Authenticate user login"""
+    username = payload.get("username", "").strip().lower()
+    password = payload.get("password", "")
+    
+    user = get_user_by_username(username)
+    if not user or not verify_password(password, user.get("password_hash", "")):
+        return JSONResponse(status_code=401, content={"error": "Invalid username or password"})
+        
+    user_data = {
+        "username": user["username"],
+        "email": user["email"],
+        "created_at": user.get("created_at")
+    }
+    return {"status": "success", "user": user_data, "token": f"user_token_{user['username']}"}
+
 # ==================== Scan History Endpoints ====================
 
 @app.get("/scans")
-async def list_scans(limit: int = Query(50, ge=1, le=200), project_name: Optional[str] = None):
-    """Get scan history records from MongoDB"""
-    scans = db_get_scans(limit=limit, project_name=project_name)
+async def list_scans(limit: int = Query(50, ge=1, le=200), username: Optional[str] = None):
+    """Get scan history records from MongoDB (filtered by user if specified)"""
+    scans = db_get_scans(limit=limit, username=username)
     return {"scans": scans, "count": len(scans)}
 
 @app.get("/scans/{scan_id}")
@@ -151,7 +189,7 @@ async def get_scan_details(scan_id: str):
 # ==================== Scanning & Analysis ====================
 
 @app.post("/scan")
-async def scan_code(file: UploadFile = File(...)):
+async def scan_code(file: UploadFile = File(...), username: Optional[str] = Form(None)):
     """Trigger parallel SAST, DAST, and LLM Governance analysis on uploaded file"""
     try:
         content = await file.read()
@@ -271,6 +309,7 @@ async def scan_github_repo(request: dict = Body(...)):
     """Clone and audit any GitHub repository URL directly"""
     repo_url = request.get("repo_url")
     branch = request.get("branch", "main")
+    username = request.get("username")
     
     if not repo_url:
         return JSONResponse(status_code=400, content={"error": "Repository URL ('repo_url') is required"})
@@ -295,6 +334,8 @@ async def scan_github_repo(request: dict = Body(...)):
         scan_id = str(uuid.uuid4())
         results["scan_id"] = scan_id
         results["timestamp"] = datetime.now().isoformat()
+        if username:
+            results["username"] = username.strip().lower()
         
         # Store in MongoDB scan history
         db_save_scan(results)
