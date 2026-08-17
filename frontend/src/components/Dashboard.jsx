@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Shield, AlertTriangle, CheckCircle, Database, Cpu, Zap, ArrowRight, Play, Sparkles, Layers, Github } from 'lucide-react'
+import { ShieldCheck, AlertTriangle, CheckCircle, Database, Cpu, Zap, ArrowRight, Play, Sparkles, Layers, Github, Activity, ShieldAlert, FileCode } from 'lucide-react'
 import axios from 'axios'
 
 export default function Dashboard({ setActiveTab }) {
@@ -27,7 +27,7 @@ export default function Dashboard({ setActiveTab }) {
       let warning = 0
 
       scans.forEach(scan => {
-        const dec = scan.verdict?.decision || (scan.can_deploy ? 'APPROVE' : 'BLOCK')
+        const dec = scan.verdict?.decision || (scan.can_deploy === false || scan.status === 'critical' ? 'BLOCK' : 'APPROVE')
         if (dec === 'BLOCK' || scan.critical_count > 0 || scan.status === 'critical') {
           critical++
         } else if (dec === 'WARN' || scan.status === 'warning') {
@@ -53,29 +53,29 @@ export default function Dashboard({ setActiveTab }) {
 
   return (
     <div className="space-y-8">
-      {/* Hero Welcome Banner */}
-      <div className="relative overflow-hidden rounded-3xl glass-panel p-8 md:p-10 border border-slate-700/50 bg-gradient-to-r from-slate-900/90 via-indigo-950/40 to-slate-900/90 shadow-2xl">
-        <div className="absolute -top-24 -right-24 w-96 h-96 bg-blue-600/15 rounded-full blur-3xl pointer-events-none"></div>
-        <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-purple-600/15 rounded-full blur-3xl pointer-events-none"></div>
+      {/* Cyberpunk Shield Hero Card */}
+      <div className="relative overflow-hidden rounded-3xl cyber-card p-8 md:p-10 border border-slate-700/60 bg-gradient-to-br from-slate-900/90 via-indigo-950/30 to-slate-950/90 shadow-2xl">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-br from-cyan-500/20 via-blue-600/10 to-transparent rounded-full blur-3xl pointer-events-none"></div>
+        <div className="absolute bottom-0 left-0 w-96 h-96 bg-gradient-to-tr from-purple-600/20 via-indigo-600/10 to-transparent rounded-full blur-3xl pointer-events-none"></div>
 
         <div className="relative z-10 max-w-3xl space-y-5">
-          <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/25 text-cyan-400 text-xs font-mono">
-            <Sparkles className="w-3.5 h-3.5 animate-pulse" />
-            <span>Hybrid Static (SAST) & Dynamic (DAST) AI Governance Platform</span>
+          <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-mono">
+            <Sparkles className="w-3.5 h-3.5 animate-pulse text-cyan-300" />
+            <span>Hybrid Static & Dynamic Security Engine</span>
           </div>
 
-          <h2 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight leading-tight">
-            Enterprise Automated Code Security & Compliance Auditor
+          <h2 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight font-heading leading-tight">
+            Automated Code Review & OWASP Vulnerability Platform
           </h2>
 
-          <p className="text-slate-300 text-sm leading-relaxed max-w-2xl">
-            Real-time multi-engine reviewer scanning Python AST vulnerability trees, dynamic runtime resource limits, and corporate policy compliance backed by MongoDB Atlas storage.
+          <p className="text-slate-300 text-xs sm:text-sm leading-relaxed max-w-2xl">
+            Real-time security scanner executing SAST AST analysis, DAST runtime sandbox profiling, and LLM governance review backed by MongoDB Atlas cloud persistence.
           </p>
 
-          <div className="pt-3 flex flex-wrap gap-4 items-center">
+          <div className="pt-2 flex flex-wrap gap-4 items-center">
             <button
               onClick={() => setActiveTab('scanner')}
-              className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold text-sm rounded-xl shadow-glow-blue transition-all transform hover:-translate-y-0.5"
+              className="flex items-center space-x-2 px-6 py-3.5 bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-slate-950 font-extrabold text-xs font-heading rounded-2xl shadow-glow-cyan transition-all transform hover:-translate-y-0.5"
             >
               <Play className="w-4 h-4 fill-current" />
               <span>Launch Live Code Scanner</span>
@@ -83,7 +83,7 @@ export default function Dashboard({ setActiveTab }) {
 
             <button
               onClick={() => setActiveTab('github')}
-              className="flex items-center space-x-2 px-5 py-3 bg-slate-800/80 hover:bg-slate-700/80 text-slate-200 font-medium text-sm rounded-xl border border-slate-700/80 transition-all"
+              className="flex items-center space-x-2 px-5 py-3.5 bg-slate-900/90 hover:bg-slate-800 text-slate-200 font-semibold text-xs rounded-2xl border border-slate-700/80 transition-all"
             >
               <Github className="w-4 h-4 text-purple-400" />
               <span>Configure GitHub Webhook</span>
@@ -93,108 +93,108 @@ export default function Dashboard({ setActiveTab }) {
         </div>
       </div>
 
-      {/* Metrics Row */}
+      {/* Hexagon Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="glass-card p-6 rounded-2xl space-y-3 relative overflow-hidden group">
+        <div className="cyber-card p-6 rounded-3xl space-y-3 relative overflow-hidden group">
           <div className="flex items-center justify-between text-slate-400">
-            <span className="text-xs font-mono tracking-wider">DATABASE STORAGE</span>
-            <div className="p-2 bg-blue-500/10 rounded-xl border border-blue-500/20 text-blue-400">
-              <Database className="w-4 h-4" />
+            <span className="text-[10px] font-mono tracking-widest uppercase">DATABASE ENGINE</span>
+            <div className="p-2.5 bg-blue-500/10 rounded-2xl border border-blue-500/20 text-blue-400">
+              <Database className="w-5 h-5" />
             </div>
           </div>
-          <p className="text-3xl font-extrabold text-white">MongoDB</p>
-          <p className="text-xs text-slate-400">Atlas Cloud Collections</p>
+          <p className="text-3xl font-extrabold font-heading text-white">MongoDB</p>
+          <p className="text-xs text-slate-400 font-mono">Atlas Cloud Persistence</p>
         </div>
 
-        <div className="glass-card p-6 rounded-2xl space-y-3 relative overflow-hidden group">
+        <div className="cyber-card p-6 rounded-3xl space-y-3 relative overflow-hidden group">
           <div className="flex items-center justify-between text-slate-400">
-            <span className="text-xs font-mono tracking-wider">TOTAL AUDITS</span>
-            <div className="p-2 bg-purple-500/10 rounded-xl border border-purple-500/20 text-purple-400">
-              <Shield className="w-4 h-4" />
+            <span className="text-[10px] font-mono tracking-widest uppercase">TOTAL AUDITS</span>
+            <div className="p-2.5 bg-purple-500/10 rounded-2xl border border-purple-500/20 text-purple-400">
+              <Activity className="w-5 h-5" />
             </div>
           </div>
-          <p className="text-3xl font-extrabold text-white">{stats.totalScans}</p>
-          <p className="text-xs text-slate-400">Persisted Audit Reports</p>
+          <p className="text-3xl font-extrabold font-heading text-white">{stats.totalScans}</p>
+          <p className="text-xs text-slate-400 font-mono">Stored Audit History</p>
         </div>
 
-        <div className="glass-card p-6 rounded-2xl space-y-3 relative overflow-hidden group">
+        <div className="cyber-card p-6 rounded-3xl space-y-3 relative overflow-hidden group">
           <div className="flex items-center justify-between text-slate-400">
-            <span className="text-xs font-mono tracking-wider">PASSED VERDICTS</span>
-            <div className="p-2 bg-emerald-500/10 rounded-xl border border-emerald-500/20 text-emerald-400">
-              <CheckCircle className="w-4 h-4" />
+            <span className="text-[10px] font-mono tracking-widest uppercase">APPROVED BUILDS</span>
+            <div className="p-2.5 bg-emerald-500/10 rounded-2xl border border-emerald-500/20 text-emerald-400">
+              <CheckCircle className="w-5 h-5" />
             </div>
           </div>
-          <p className="text-3xl font-extrabold text-emerald-400">{stats.passedCount}</p>
-          <p className="text-xs text-slate-400">Approved Builds</p>
+          <p className="text-3xl font-extrabold font-heading text-emerald-400">{stats.passedCount}</p>
+          <p className="text-xs text-slate-400 font-mono">Safe to Deploy</p>
         </div>
 
-        <div className="glass-card p-6 rounded-2xl space-y-3 relative overflow-hidden group">
+        <div className="cyber-card p-6 rounded-3xl space-y-3 relative overflow-hidden group">
           <div className="flex items-center justify-between text-slate-400">
-            <span className="text-xs font-mono tracking-wider">CRITICAL BLOCKS</span>
-            <div className="p-2 bg-rose-500/10 rounded-xl border border-rose-500/20 text-rose-400">
-              <AlertTriangle className="w-4 h-4" />
+            <span className="text-[10px] font-mono tracking-widest uppercase">BLOCKED BUILDS</span>
+            <div className="p-2.5 bg-rose-500/10 rounded-2xl border border-rose-500/20 text-rose-400">
+              <ShieldAlert className="w-5 h-5" />
             </div>
           </div>
-          <p className="text-3xl font-extrabold text-rose-400">{stats.criticalCount}</p>
-          <p className="text-xs text-slate-400">Deployment Blocked</p>
+          <p className="text-3xl font-extrabold font-heading text-rose-400">{stats.criticalCount}</p>
+          <p className="text-xs text-slate-400 font-mono">Deployment Blocked</p>
         </div>
       </div>
 
-      {/* Engine Architecture Cards */}
+      {/* Live Engine Pipeline */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="glass-panel p-6 rounded-2xl space-y-3 border-l-4 border-l-cyan-500">
+        <div className="cyber-card p-6 rounded-3xl space-y-3 border-l-4 border-l-cyan-400">
           <div className="flex items-center space-x-3 text-cyan-400">
             <Cpu className="w-5 h-5" />
-            <h3 className="font-bold text-white text-base">1. SAST Static Engine</h3>
+            <h3 className="font-bold font-heading text-white text-base">1. SAST Static Engine</h3>
           </div>
           <p className="text-xs text-slate-300 leading-relaxed">
-            AST syntax tree analyzer detecting OWASP Top 10 risks: SQL injection, hardcoded credentials, command injection, weak crypto, and unhandled exceptions.
+            Python AST syntax tree visitor searching for SQL injection, hardcoded credentials, command execution, and weak hashes.
           </p>
           <div className="pt-1 text-[11px] font-mono text-emerald-400 flex items-center space-x-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>AST Visitor Active</span>
+            <span>AST Visitor Ready</span>
           </div>
         </div>
 
-        <div className="glass-panel p-6 rounded-2xl space-y-3 border-l-4 border-l-purple-500">
+        <div className="cyber-card p-6 rounded-3xl space-y-3 border-l-4 border-l-purple-400">
           <div className="flex items-center space-x-3 text-purple-400">
             <Zap className="w-5 h-5" />
-            <h3 className="font-bold text-white text-base">2. DAST Dynamic Engine</h3>
+            <h3 className="font-bold font-heading text-white text-base">2. DAST Sandbox</h3>
           </div>
           <p className="text-xs text-slate-300 leading-relaxed">
-            Process execution sandbox profiling RAM memory surges, CPU spikes, execution timeouts, infinite loops, and unhandled runtime exceptions.
+            Subprocess execution runner profiling RAM usage, CPU spikes, execution timeouts, and runtime exceptions.
           </p>
           <div className="pt-1 text-[11px] font-mono text-emerald-400 flex items-center space-x-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>Process Profiler Active</span>
+            <span>Process Sandbox Ready</span>
           </div>
         </div>
 
-        <div className="glass-panel p-6 rounded-2xl space-y-3 border-l-4 border-l-indigo-500">
+        <div className="cyber-card p-6 rounded-3xl space-y-3 border-l-4 border-l-indigo-400">
           <div className="flex items-center space-x-3 text-indigo-400">
             <Sparkles className="w-5 h-5" />
-            <h3 className="font-bold text-white text-base">3. LLM Governance AI</h3>
+            <h3 className="font-bold font-heading text-white text-base">3. LLM Governance AI</h3>
           </div>
           <p className="text-xs text-slate-300 leading-relaxed">
-            Evaluates corporate policy guidelines using Groq Llama 3.3, outputting structured JSON reports with inline auto-fix suggestions.
+            Evaluates corporate policy guidelines using Groq Llama 3.3, generating structured JSON reviews with code fixes.
           </p>
           <div className="pt-1 text-[11px] font-mono text-emerald-400 flex items-center space-x-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>Groq AI Ready</span>
+            <span>Policy Reviewer Ready</span>
           </div>
         </div>
       </div>
 
-      {/* Recent Audit Timeline Table */}
-      <div className="glass-panel rounded-2xl p-6 space-y-4">
+      {/* Audit History Timeline Table */}
+      <div className="cyber-card rounded-3xl p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-bold text-white">Recent Audit History Timeline</h3>
-            <p className="text-xs text-slate-400">Latest security audit runs stored in MongoDB</p>
+            <h3 className="text-lg font-bold font-heading text-white">Recent Audit History Timeline</h3>
+            <p className="text-xs text-slate-400 font-mono">Latest security audit runs stored in MongoDB Atlas</p>
           </div>
           <button
             onClick={() => setActiveTab('history')}
-            className="text-xs text-cyan-400 hover:text-cyan-300 font-mono font-medium flex items-center space-x-1"
+            className="text-xs text-cyan-400 hover:text-cyan-300 font-mono font-semibold flex items-center space-x-1"
           >
             <span>View All Logs</span>
             <ArrowRight className="w-3.5 h-3.5" />
@@ -206,12 +206,12 @@ export default function Dashboard({ setActiveTab }) {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="text-slate-400 uppercase bg-slate-900/60 font-mono">
+              <thead className="text-slate-400 uppercase bg-slate-900/80 font-mono">
                 <tr>
-                  <th className="px-4 py-3">Scan ID</th>
-                  <th className="px-4 py-3">Audit Target</th>
-                  <th className="px-4 py-3">Verdict</th>
-                  <th className="px-4 py-3">Timestamp</th>
+                  <th className="px-5 py-3.5">Scan ID</th>
+                  <th className="px-5 py-3.5">Audit Target</th>
+                  <th className="px-5 py-3.5">Verdict</th>
+                  <th className="px-5 py-3.5">Timestamp</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/80">
@@ -219,16 +219,16 @@ export default function Dashboard({ setActiveTab }) {
                   const decision = scan.verdict?.decision || (scan.status === 'critical' || scan.can_deploy === false ? 'BLOCK' : 'APPROVE')
                   return (
                     <tr key={scan.scan_id || Math.random()} className="hover:bg-slate-800/40 transition-colors">
-                      <td className="px-4 py-3 font-mono text-cyan-400 font-medium">{scan.scan_id?.slice(0, 8) || 'N/A'}</td>
-                      <td className="px-4 py-3 text-slate-200 font-medium">{scan.file || scan.repository || scan.project_name || 'Uploaded Source Code'}</td>
-                      <td className="px-4 py-3">
+                      <td className="px-5 py-3.5 font-mono text-cyan-400 font-bold">{scan.scan_id?.slice(0, 8) || 'N/A'}</td>
+                      <td className="px-5 py-3.5 text-slate-200 font-medium">{scan.file || scan.repository || scan.project_name || 'Uploaded Source Code'}</td>
+                      <td className="px-5 py-3.5">
                         <span className={`px-2.5 py-1 rounded-full font-mono text-[10px] font-bold ${
-                          decision === 'BLOCK' ? 'badge-critical' : decision === 'WARN' ? 'badge-warning' : 'badge-success'
+                          decision === 'BLOCK' ? 'badge-block' : decision === 'WARN' ? 'badge-warn' : 'badge-approve'
                         }`}>
                           {decision}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-slate-400 font-mono">
+                      <td className="px-5 py-3.5 text-slate-400 font-mono">
                         {scan.timestamp ? new Date(scan.timestamp).toLocaleString() : 'Recent'}
                       </td>
                     </tr>
