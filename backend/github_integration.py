@@ -42,10 +42,16 @@ class GitHubIntegration:
             True if signature is valid, False otherwise
         """
         if not self.webhook_secret:
-            # If no secret configured, skip verification (not recommended for production)
+            # Check environment dynamically
+            self.webhook_secret = os.getenv("GITHUB_WEBHOOK_SECRET")
+            
+        if not self.webhook_secret:
+            # If no secret is configured at all in env or instance, log warning
+            print("⚠️ GitHub webhook secret not configured. Signature check bypassed.")
             return True
         
         if not signature:
+            print("❌ Webhook request rejected: Missing X-Hub-Signature-256 header")
             return False
         
         # GitHub sends signature as "sha256=<hash>"
@@ -55,7 +61,10 @@ class GitHubIntegration:
             hashlib.sha256
         ).hexdigest()
         
-        return hmac.compare_digest(expected_signature, signature)
+        is_valid = hmac.compare_digest(expected_signature, signature)
+        if not is_valid:
+            print("❌ Webhook request rejected: Invalid HMAC signature")
+        return is_valid
     
     async def handle_push_event(self, payload: Dict) -> Dict:
         """
@@ -135,56 +144,67 @@ class GitHubIntegration:
                 "message": str(e)
             }
     
-    async def clone_repository(self, repo_url: str, branch: str) -> Optional[str]:
+    async def clone_repository(self, repo_url: str, branch: str = "main") -> Optional[str]:
         """
-        Clone GitHub repository to temporary directory
-        
-        Args:
-            repo_url: Repository clone URL
-            branch: Branch to clone
-        
-        Returns:
-            Path to cloned repository or None if failed
+        Clone or download GitHub repository to temporary directory.
+        Tries git clone first, falls back to downloading repository ZIP if git is missing.
         """
+        clone_dir = os.path.join(
+            self.temp_dir,
+            f"github_review_{os.urandom(8).hex()}"
+        )
+        
+        print(f"[GitHub] Fetching repository: {repo_url} (branch: {branch})")
+        
+        # 1. Try git clone
         try:
-            # Create unique temp directory
-            clone_dir = os.path.join(
-                self.temp_dir,
-                f"github_review_{os.urandom(8).hex()}"
-            )
-            
-            print(f"🔄 Cloning repository...")
-            print(f"   URL: {repo_url}")
-            print(f"   Branch: {branch}")
-            print(f"   Destination: {clone_dir}")
-            
-            # Clone repository with specific branch
             result = subprocess.run(
-                [
-                    'git', 'clone',
-                    '--depth', '1',  # Shallow clone for speed
-                    '--branch', branch,
-                    repo_url,
-                    clone_dir
-                ],
+                ['git', 'clone', '--depth', '1', '--branch', branch, repo_url, clone_dir],
                 capture_output=True,
                 text=True,
                 timeout=60
             )
+            if result.returncode == 0 and os.path.exists(clone_dir):
+                print(f"[GitHub] Repository cloned successfully via Git")
+                return clone_dir
+        except (FileNotFoundError, Exception) as e:
+            print(f"[GitHub Warning] Git CLI not available or failed: {e}. Falling back to ZIP download...")
+
+        # 2. Native Python HTTP ZIP download fallback (No Git binary required!)
+        try:
+            import urllib.request
+            import zipfile
+            import io
             
-            if result.returncode != 0:
-                print(f"❌ Git clone failed: {result.stderr}")
-                return None
-            
-            print(f"✅ Repository cloned successfully")
-            return clone_dir
-            
-        except subprocess.TimeoutExpired:
-            print("❌ Git clone timed out")
-            return None
-        except Exception as e:
-            print(f"❌ Clone error: {e}")
-            return None
+            clean_url = repo_url.rstrip('/').replace('.git', '')
+            if 'github.com/' in clean_url:
+                parts = clean_url.split('github.com/')[-1].split('/')
+                if len(parts) >= 2:
+                    owner, repo = parts[0], parts[1]
+                    zip_urls = [
+                        f"https://github.com/{owner}/{repo}/archive/refs/heads/{branch}.zip",
+                        f"https://github.com/{owner}/{repo}/archive/refs/heads/main.zip",
+                        f"https://github.com/{owner}/{repo}/archive/refs/heads/master.zip",
+                        f"https://api.github.com/repos/{owner}/{repo}/zipball/{branch}"
+                    ]
+                    
+                    for z_url in zip_urls:
+                        try:
+                            req = urllib.request.Request(z_url, headers={"User-Agent": "CodeReviewAgent/2.0"})
+                            with urllib.request.urlopen(req, timeout=30) as resp:
+                                zip_bytes = resp.read()
+                                if zip_bytes and len(zip_bytes) > 100:
+                                    os.makedirs(clone_dir, exist_ok=True)
+                                    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as z:
+                                        z.extractall(clone_dir)
+                                    print(f"[GitHub] Repository downloaded successfully via GitHub ZIP Archive!")
+                                    return clone_dir
+                        except Exception as ze:
+                            print(f"  Attempted {z_url}: {ze}")
+        except Exception as fallback_err:
+            print(f"[GitHub Error] ZIP download fallback error: {fallback_err}")
+
+        return None
     
     def extract_changed_files(self, commits: list) -> list:
         """
@@ -234,7 +254,7 @@ class GitHubIntegration:
         from engines.dast_engine import run_runtime_analysis
         
         print(f"\n{'='*60}")
-        print(f"🔍 Starting Code Analysis")
+        print(f"[Analysis] Starting Code Analysis")
         print(f"{'='*60}")
         
         # If no specific files changed, analyze all Python files
@@ -270,10 +290,10 @@ class GitHubIntegration:
             file_path = os.path.join(repo_path, file_rel_path)
             
             if not os.path.exists(file_path):
-                print(f"⚠️  File not found (may have been deleted): {file_rel_path}")
+                print(f"[Warning] File not found (may have been deleted): {file_rel_path}")
                 continue
             
-            print(f"\n📄 Analyzing: {file_rel_path}")
+            print(f"\n[Analyzing] File: {file_rel_path}")
             
             try:
                 # Run all three engines in parallel
@@ -330,13 +350,13 @@ class GitHubIntegration:
                 
                 # Print summary for this file
                 if len(all_findings) > 0:
-                    print(f"   ⚠️  Found {len(all_findings)} issue(s)")
+                    print(f"   [Notice] Found {len(all_findings)} issue(s)")
                     print(f"   Critical: {file_summary['critical']}, High: {file_summary['high']}, Medium: {file_summary['medium']}, Low: {file_summary['low']}")
                 else:
-                    print(f"   ✅ No issues found")
+                    print(f"   [OK] No issues found")
                 
             except Exception as e:
-                print(f"   ❌ Analysis failed: {e}")
+                print(f"   [Error] Analysis failed: {e}")
                 results['files'].append({
                     "path": file_rel_path,
                     "status": "error",
@@ -347,19 +367,19 @@ class GitHubIntegration:
         if results['summary']['critical_issues'] > 0:
             results['status'] = 'critical'
             results['can_deploy'] = False
-            results['message'] = f"⛔ Found {results['summary']['critical_issues']} critical issue(s). Deployment blocked."
+            results['message'] = f"Found {results['summary']['critical_issues']} critical issue(s). Deployment blocked."
         elif results['summary']['high_issues'] > 0:
             results['status'] = 'warning'
             results['can_deploy'] = False
-            results['message'] = f"⚠️  Found {results['summary']['high_issues']} high severity issue(s). Review recommended."
+            results['message'] = f"Found {results['summary']['high_issues']} high severity issue(s). Review recommended."
         elif results['summary']['total_issues'] > 0:
             results['status'] = 'info'
             results['can_deploy'] = True
-            results['message'] = f"ℹ️  Found {results['summary']['total_issues']} minor issue(s). Safe to deploy."
+            results['message'] = f"Found {results['summary']['total_issues']} minor issue(s). Safe to deploy."
         else:
             results['status'] = 'success'
             results['can_deploy'] = True
-            results['message'] = "✅ All checks passed. Safe to deploy!"
+            results['message'] = "All checks passed. Safe to deploy!"
         
         print(f"\n{'='*60}")
         print(f"Analysis Complete: {results['message']}")
@@ -376,11 +396,11 @@ class GitHubIntegration:
         """
         try:
             if os.path.exists(repo_path):
-                print(f"🧹 Cleaning up: {repo_path}")
-                shutil.rmtree(repo_path)
-                print("✅ Cleanup complete")
+                print(f"[Cleanup] Removing temporary folder: {repo_path}")
+                shutil.rmtree(repo_path, ignore_errors=True)
+                print("[Cleanup] Cleanup complete")
         except Exception as e:
-            print(f"⚠️  Cleanup warning: {e}")
+            print(f"[Cleanup Warning] {e}")
 
 
 # Global instance

@@ -60,6 +60,7 @@ def detect_language_from_code(code: str, file_path: str = None) -> str:
 def _get_undefined_names_python(tree: ast.AST) -> List[Dict]:
     findings = []
     builtin_names = set(dir(__builtins__))
+    common_globals = {"self", "cls", "app", "request", "conn", "cursor", "config", "ConfigService", "SecureVault", "os", "sys", "json", "datetime", "sqlite3", "pymongo", "pytest"}
 
     class ScopeVisitor(ast.NodeVisitor):
         def __init__(self):
@@ -125,7 +126,7 @@ def _get_undefined_names_python(tree: ast.AST) -> List[Dict]:
         def visit_Name(self, node: ast.Name):
             if isinstance(node.ctx, ast.Load):
                 name = node.id
-                if name in builtin_names:
+                if name in builtin_names or name in common_globals:
                     return
                 if any(name in scope for scope in reversed(self.scopes)):
                     return
@@ -145,17 +146,20 @@ def _get_undefined_names_python(tree: ast.AST) -> List[Dict]:
     visitor = ScopeVisitor()
     visitor.visit(tree)
 
+    seen = set()
     for name, lineno, _ in visitor.undefined:
-        findings.append({
-            'rule': 'Undefined Variable',
-            'line': lineno,
-            'severity': 'HIGH',
-            'message': f'Undefined variable: {name}',
-            'suggestion': f'Declare or pass `{name}` before use',
-            'oldCode': '',
-            'newCode': '',
-            'confidence': 0.85
-        })
+        if name not in seen and len(name) > 1:
+            seen.add(name)
+            findings.append({
+                'rule': 'Undefined Variable (CWE-457)',
+                'line': lineno,
+                'severity': 'MEDIUM',
+                'message': f'Variable `{name}` is referenced before definition in current scope',
+                'suggestion': f'Define or import `{name}` before referencing it',
+                'oldCode': f'reference to {name}',
+                'newCode': f'{name} = None',
+                'confidence': 0.7
+            })
 
     return findings
 
@@ -716,7 +720,7 @@ Only return issues for ACTUAL problems in the code."""
 
 def simulate_governance_check(code: str, guidelines: str) -> List[Dict]:
     """
-    Simulate governance check - detect REAL issues only
+    Simulate governance check - detect OWASP Top 10 vulnerabilities & corporate policies
     """
     findings = []
     lines = code.split('\n')
@@ -728,69 +732,103 @@ def simulate_governance_check(code: str, guidelines: str) -> List[Dict]:
         if not line_stripped or line_stripped.startswith('#'):
             continue
         
-        # Hardcoded credentials - but NOT if using os.getenv, SecureVault, etc.
-        if any(kw in line.lower() for kw in ['password', 'api_key', 'secret', 'token']) and '=' in line:
-            # Check if it's actually hardcoded (has quotes with value)
-            if ('"' in line or "'" in line) and not any(safe in line for safe in ['getenv', 'SecureVault', 'config.get', 'os.environ']):
-                # Extract the actual assignment
-                if '=' in line:
-                    var_name = line.split('=')[0].strip()
-                    old_value = line.split('=')[1].strip()
-                    findings.append({
-                        "rule": "Hardcoded Credentials",
-                        "line": i + 1,
-                        "severity": "CRITICAL",
-                        "message": "Credentials hardcoded in source code",
-                        "suggestion": "Use environment variables or secure vault for credentials",
-                        "oldCode": line_stripped,
-                        "newCode": f"{var_name} = os.getenv('{var_name}')",
-                        "canAutoFix": True
-                    })
-        
-        # Hardcoded discount/price - but NOT if using ConfigService
-        elif any(kw in line.lower() for kw in ['discount', 'price', 'rate']) and '=' in line:
-            if any(char.isdigit() for char in line) and '0.' in line and 'ConfigService' not in line:
+        # 1. Hardcoded credentials (passwords, keys, tokens)
+        if any(kw in line.lower() for kw in ['password', 'passwd', 'api_key', 'apikey', 'secret', 'token', 'auth_key', 'private_key']) and '=' in line:
+            if ('"' in line or "'" in line) and not any(safe in line for safe in ['getenv', 'SecureVault', 'config.get', 'os.environ', 'ConfigService']):
                 var_name = line.split('=')[0].strip()
                 findings.append({
-                    "rule": "Hardcoded Configuration",
+                    "rule": "Hardcoded Credentials (CWE-798)",
+                    "line": i + 1,
+                    "severity": "CRITICAL",
+                    "message": f"Credential '{var_name}' hardcoded in source code literal",
+                    "suggestion": f"Retrieve '{var_name}' dynamically from environment using os.getenv()",
+                    "oldCode": line_stripped,
+                    "newCode": f"{var_name} = os.getenv('{var_name.upper()}')",
+                    "canAutoFix": True
+                })
+        
+        # 2. Hardcoded Financial Constants (discounts, prices, rates, taxes)
+        elif any(kw in line.lower() for kw in ['discount', 'price', 'rate', 'fee', 'tax', 'markup', 'commission']) and '=' in line:
+            if any(char.isdigit() for char in line) and not any(safe in line for safe in ['ConfigService', 'os.getenv', 'getenv']):
+                var_name = line.split('=')[0].strip()
+                findings.append({
+                    "rule": "Hardcoded Financial Constant",
                     "line": i + 1,
                     "severity": "HIGH",
-                    "message": "Financial constant hardcoded - violates policy",
-                    "suggestion": "Use ConfigService to retrieve dynamic values",
+                    "message": f"Financial constant '{var_name}' hardcoded as literal - violates policy",
+                    "suggestion": "Retrieve financial rates dynamically via ConfigService",
                     "oldCode": line_stripped,
                     "newCode": f"{var_name} = ConfigService.get('{var_name.lower()}')",
                     "canAutoFix": True
                 })
         
-        # SQL injection - string formatting in queries
-        elif ('execute' in line.lower() or 'query' in line.lower()):
-            if ('f"' in line or "f'" in line or '+' in line) and ('SELECT' in line or 'INSERT' in line or 'UPDATE' in line or 'DELETE' in line):
+        # 3. SQL Injection (dynamic string query execution)
+        elif any(kw in line.lower() for kw in ['execute', 'executemany', 'query', 'raw_query', 'run_sql']) and ('(' in line):
+            if any(fmt in line for fmt in ['f"', "f'", '%', '.format', '+']) or not ('?' in line or '%s' in line):
                 findings.append({
-                    "rule": "SQL Injection",
+                    "rule": "SQL Injection Risk (CWE-89)",
                     "line": i + 1,
                     "severity": "CRITICAL",
-                    "message": "SQL query vulnerable to injection",
-                    "suggestion": "Use parameterized queries instead of string formatting",
+                    "message": "Potential SQL injection vulnerability via dynamic query construction",
+                    "suggestion": "Use parameterized queries with placeholder bindings",
                     "oldCode": line_stripped,
                     "newCode": 'cursor.execute("SELECT * FROM table WHERE id = ?", (user_input,))',
                     "canAutoFix": True
                 })
+
+        # 4. Command Injection / Dangerous Code Execution
+        elif any(cmd in line for cmd in ['os.system', 'os.popen', 'eval(', 'exec(']) or ('subprocess' in line and 'shell=True' in line):
+            findings.append({
+                "rule": "Command Injection Risk (CWE-78/95)",
+                "line": i + 1,
+                "severity": "CRITICAL",
+                "message": "Dangerous command or code execution invocation",
+                "suggestion": "Avoid shell execution or use strict subprocess argument lists",
+                "oldCode": line_stripped,
+                "newCode": "# TODO: Refactor to safe subprocess call without shell=True",
+                "canAutoFix": True
+            })
+
+        # 5. Weak Cryptography
+        elif any(crypto in line.lower() for crypto in ['hashlib.md5', 'hashlib.sha1', 'md5(', 'sha1(']):
+            findings.append({
+                "rule": "Weak Cryptographic Algorithm (CWE-327)",
+                "line": i + 1,
+                "severity": "MEDIUM",
+                "message": "Use of weak cryptographic hashing algorithm (MD5/SHA1)",
+                "suggestion": "Upgrade to SHA-256 or bcrypt/argon2 for password hashing",
+                "oldCode": line_stripped,
+                "newCode": "hashlib.sha256(data.encode()).hexdigest()",
+                "canAutoFix": True
+            })
+
+        # 6. Insecure Deserialization
+        elif any(deser in line for deser in ['pickle.loads', 'pickle.load', 'marshal.loads']):
+            findings.append({
+                "rule": "Insecure Deserialization (CWE-502)",
+                "line": i + 1,
+                "severity": "CRITICAL",
+                "message": "Untrusted object deserialization can cause remote code execution",
+                "suggestion": "Use safe JSON serialization instead of pickle",
+                "oldCode": line_stripped,
+                "newCode": "json.loads(payload)",
+                "canAutoFix": True
+            })
         
-        # Division without zero check
-        elif '/' in line and '//' not in line and '/*' not in line:
-            if '=' in line and not any(check in line for check in ['if', '!= 0', '> 0']):
+        # 7. Division without zero check
+        elif '/' in line and '//' not in line and '/*' not in line and '=' in line:
+            if not any(check in line for check in ['if', '!= 0', '> 0', 'Decimal']):
                 var_name = line.split('=')[0].strip()
                 expr = line.split('=')[1].strip()
-                # Extract divisor
                 parts = expr.split('/')
                 if len(parts) == 2:
                     divisor = parts[1].strip()
                     findings.append({
-                        "rule": "Division by Zero Risk",
+                        "rule": "Division by Zero Risk (CWE-369)",
                         "line": i + 1,
                         "severity": "HIGH",
-                        "message": "Potential division by zero - add safety check",
-                        "suggestion": "Add validation to prevent division by zero",
+                        "message": "Potential division by zero - missing zero check guard",
+                        "suggestion": "Add validation guard before performing division",
                         "oldCode": line_stripped,
                         "newCode": f"{var_name} = {expr} if {divisor} != 0 else 0",
                         "canAutoFix": True

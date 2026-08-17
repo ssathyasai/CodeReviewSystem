@@ -2,187 +2,185 @@ import asyncio
 import subprocess
 import psutil
 import time
-from typing import Dict, List
 import tempfile
 import os
+import sys
+import ast
+from typing import Dict, List
 
 async def run_runtime_analysis(file_path: str) -> Dict:
     """
-    Run dynamic analysis by executing the code and monitoring resources
+    Dynamic Application Security Testing (DAST) & Dynamic Runtime Analysis Engine.
+    Monitors process execution metrics, resource utilization, exceptions, and runtime risks.
     """
     try:
-        findings = []
-        
-        # Create a safe execution wrapper
+        if not os.path.exists(file_path):
+            return {
+                "status": "error",
+                "findings": [],
+                "error": f"File not found: {file_path}",
+                "engine": "dast-engine"
+            }
+
+        # 1. Pre-execution AST safety inspection
+        static_anomalies = analyze_code_structure(file_path)
+
+        # 2. Execution wrapper
         wrapper_code = f"""
 import sys
 import time
 
-# Set timeout
-import signal
-signal.alarm(10)  # 10 second timeout
-
 try:
-    # Execute the target file
-    exec(open('{file_path}').read())
+    with open(r'''{file_path}''', 'r', encoding='utf-8') as f:
+        code_content = f.read()
+    exec(compile(code_content, r'''{file_path}''', 'exec'), {{'__name__': '__main__'}})
 except Exception as e:
-    print(f"Execution error: {{e}}")
+    print(f"[DAST Runtime Error] {{type(e).__name__}}: {{e}}", file=sys.stderr)
     sys.exit(1)
 """
-        
-        # Write wrapper to temp file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
             wrapper_path = f.name
             f.write(wrapper_code)
-        
+
+        findings = list(static_anomalies)
+
         try:
-            # Start the process
+            # Launch isolated process
             process = await asyncio.create_subprocess_exec(
-                'python', wrapper_path,
+                sys.executable, wrapper_path,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
+
+            # Monitor process resource metrics
+            metrics = await monitor_process(process.pid, timeout=3.0)
+
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=4.0)
             
-            # Monitor resource usage
-            metrics = await monitor_process(process.pid)
-            
-            # Wait for completion (with timeout)
-            try:
-                await asyncio.wait_for(process.wait(), timeout=5.0)
-            except asyncio.TimeoutError:
-                process.kill()
-                findings.append({
-                    "issue": "Execution Timeout",
-                    "severity": "HIGH",
-                    "details": "Code execution exceeded time limit - possible infinite loop",
-                    "cpuPeak": "N/A"
-                })
-            
-            # Analyze metrics
+            # Check stderr for runtime exceptions
+            if stderr:
+                err_text = stderr.decode('utf-8', errors='ignore')
+                if "Runtime Error" in err_text or "Exception" in err_text:
+                    findings.append({
+                        "issue": "Runtime Unhandled Exception",
+                        "severity": "HIGH",
+                        "details": f"Script failed at runtime: {err_text.strip()[:150]}",
+                        "cpuPeak": "N/A"
+                    })
+
+            # Resource metrics analysis
             if metrics:
-                findings.extend(analyze_metrics(metrics))
-            
+                metric_findings = analyze_metrics(metrics)
+                findings.extend(metric_findings)
+
+        except asyncio.TimeoutError:
+            try:
+                process.kill()
+            except Exception:
+                pass
+            findings.append({
+                "issue": "Execution Timeout / Infinite Loop",
+                "severity": "HIGH",
+                "details": "Execution exceeded time threshold (possible infinite loop or blocking call)",
+                "cpuPeak": "> 90%"
+            })
         finally:
-            # Cleanup
             try:
                 os.unlink(wrapper_path)
-            except:
+            except Exception:
                 pass
-        
-        # If no real execution, simulate
-        if not findings:
-            findings = simulate_runtime_analysis(file_path)
-        
+
         return {
             "status": "warning" if findings else "success",
             "findings": findings,
-            "engine": "dast"
+            "engine": "dast-dynamic-engine"
         }
-        
+
     except Exception as e:
         return {
             "status": "error",
             "findings": [],
             "error": str(e),
-            "engine": "dast"
+            "engine": "dast-dynamic-engine"
         }
 
-async def monitor_process(pid: int) -> List[Dict]:
-    """
-    Monitor process resource usage
-    """
+def analyze_code_structure(file_path: str) -> List[Dict]:
+    """Inspect AST for potential runtime risks (infinite loops, unclosed handles, global mutations)"""
+    anomalies = []
+    try:
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            code = f.read()
+
+        tree = ast.parse(code)
+        for node in ast.walk(tree):
+            # Check while True loop without break
+            if isinstance(node, ast.While):
+                if isinstance(node.test, ast.Constant) and node.test.value is True:
+                    has_break = any(isinstance(child, ast.Break) for child in ast.walk(node))
+                    if not has_break:
+                        anomalies.append({
+                            "issue": "Potential Infinite Loop (while True)",
+                            "severity": "HIGH",
+                            "details": f"Unbounded loop detected at line {node.lineno} without break statement",
+                            "cpuPeak": "High Risk"
+                        })
+            # Global memory accumulation check
+            if isinstance(node, ast.Global):
+                anomalies.append({
+                    "issue": "Global State Mutation",
+                    "severity": "LOW",
+                    "details": f"Global variable reference '{', '.join(node.names)}' at line {node.lineno}",
+                    "cpuPeak": "Normal"
+                })
+    except Exception:
+        pass
+    return anomalies
+
+async def monitor_process(pid: int, timeout: float = 3.0) -> List[Dict]:
     metrics = []
-    
+    start_time = time.time()
     try:
         process = psutil.Process(pid)
-        
-        for _ in range(10):  # Monitor for 1 second (10 samples)
+        while time.time() - start_time < timeout:
             try:
                 cpu_percent = process.cpu_percent(interval=0.1)
-                memory_info = process.memory_info()
-                
+                mem_info = process.memory_info()
                 metrics.append({
-                    "timestamp": time.time(),
                     "cpu_percent": cpu_percent,
-                    "memory_mb": memory_info.rss / 1024 / 1024
+                    "memory_mb": mem_info.rss / (1024 * 1024)
                 })
-                
-                await asyncio.sleep(0.1)
-            except psutil.NoSuchProcess:
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
                 break
-        
-    except Exception as e:
-        print(f"Monitoring error: {e}")
-    
+    except Exception:
+        pass
     return metrics
 
 def analyze_metrics(metrics: List[Dict]) -> List[Dict]:
-    """
-    Analyze collected metrics for issues
-    """
     findings = []
-    
-    if not metrics or len(metrics) < 3:
+    if not metrics:
         return findings
-    
-    # Check for memory leaks
-    memory_values = [m["memory_mb"] for m in metrics]
-    memory_trend = memory_values[-1] - memory_values[0]
-    
-    if memory_trend > 50:  # More than 50MB increase
-        findings.append({
-            "issue": "Memory Leak Detected",
-            "severity": "MEDIUM",
-            "details": f"Memory increased from {memory_values[0]:.1f}MB to {memory_values[-1]:.1f}MB",
-            "cpuPeak": f"{max(m['cpu_percent'] for m in metrics):.1f}%"
-        })
-    
-    # Check for CPU spikes
+
     cpu_values = [m["cpu_percent"] for m in metrics]
-    avg_cpu = sum(cpu_values) / len(cpu_values)
-    max_cpu = max(cpu_values)
-    
-    if max_cpu > 80:
+    max_cpu = max(cpu_values) if cpu_values else 0.0
+
+    mem_values = [m["memory_mb"] for m in metrics]
+    mem_delta = mem_values[-1] - mem_values[0] if len(mem_values) > 1 else 0.0
+
+    if max_cpu > 85.0:
         findings.append({
-            "issue": "High CPU Usage",
+            "issue": "High Dynamic CPU Spike",
             "severity": "MEDIUM",
-            "details": f"CPU peaked at {max_cpu:.1f}% (avg: {avg_cpu:.1f}%)",
+            "details": f"Process CPU spiked at {max_cpu:.1f}% during dynamic execution",
             "cpuPeak": f"{max_cpu:.1f}%"
         })
-    
-    return findings
 
-def simulate_runtime_analysis(file_path: str) -> List[Dict]:
-    """
-    Simulate runtime analysis when execution is not safe
-    """
-    findings = []
-    
-    try:
-        with open(file_path, 'r') as f:
-            code = f.read()
-        
-        # Check for potential infinite loops
-        if 'while True' in code or 'while 1' in code:
-            if 'break' not in code:
-                findings.append({
-                    "issue": "Potential Infinite Loop",
-                    "severity": "MEDIUM",
-                    "details": "Unbounded while loop detected without break condition",
-                    "cpuPeak": "N/A"
-                })
-        
-        # Check for memory-intensive operations
-        if any(keyword in code for keyword in ['append', '+=', 'extend']) and 'for' in code:
-            if 'clear' not in code and 'del' not in code:
-                findings.append({
-                    "issue": "Potential Memory Leak",
-                    "severity": "LOW",
-                    "details": "List operations in loop without cleanup",
-                    "cpuPeak": "N/A"
-                })
-        
-    except Exception as e:
-        pass
-    
+    if mem_delta > 30.0:
+        findings.append({
+            "issue": "Dynamic Memory Surge / Leak",
+            "severity": "MEDIUM",
+            "details": f"Subprocess RAM allocated increased by {mem_delta:.1f} MB during execution",
+            "cpuPeak": f"{max_cpu:.1f}%"
+        })
+
     return findings
