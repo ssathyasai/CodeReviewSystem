@@ -1,95 +1,125 @@
-import React, { useState, useEffect } from 'react'
-import { Github, Key, CheckCircle, AlertTriangle, ShieldCheck } from 'lucide-react'
-import axios from 'axios'
+import React, { useState } from 'react'
+import { Github, ShieldCheck, Copy, Check, Terminal, ExternalLink, Lock } from 'lucide-react'
 
 export default function GitHubSettings() {
-  const [status, setStatus] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [copiedUrl, setCopiedUrl] = useState(false)
+  const [copiedSecret, setCopiedSecret] = useState(false)
 
-  useEffect(() => {
-    fetchGitHubStatus()
-  }, [])
+  const webhookUrl = `${window.location.origin}/github-webhook`
+  const secretKey = 'my_secret_key_123'
 
-  const fetchGitHubStatus = async () => {
-    try {
-      setLoading(true)
-      const res = await axios.get('/github/status')
-      setStatus(res.data)
-    } catch (err) {
-      console.error('Error fetching GitHub status:', err)
-    } finally {
-      setLoading(false)
+  const copyToClipboard = (text, type) => {
+    navigator.clipboard.writeText(text)
+    if (type === 'url') {
+      setCopiedUrl(true)
+      setTimeout(() => setCopiedUrl(false), 2000)
+    } else {
+      setCopiedSecret(true)
+      setTimeout(() => setCopiedSecret(false), 2000)
     }
   }
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div>
-        <h2 className="text-2xl font-bold text-white">GitHub Webhook Security Integration</h2>
-        <p className="text-sm text-gray-400">Configure HMAC SHA-256 signatures for GitHub push webhooks</p>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        
-        {/* Status Card */}
-        <div className="glass-panel p-6 rounded-2xl space-y-6">
-          <h3 className="text-sm font-semibold text-white flex items-center space-x-2">
-            <ShieldCheck className="w-4 h-4 text-blue-400" />
-            <span>Security Status</span>
-          </h3>
-
-          {loading ? (
-            <p className="text-xs text-gray-500 py-6 text-center">Checking webhook security status...</p>
-          ) : (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 rounded-xl bg-gray-950 border border-gray-800 text-xs">
-                <span className="text-gray-300">Webhook Secret Configured (.env)</span>
-                <span className={`px-2.5 py-1 rounded-full font-mono text-[10px] ${
-                  status?.webhook_secret_set
-                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                    : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
-                }`}>
-                  {status?.webhook_secret_set ? 'ENFORCED (HMAC SHA-256)' : 'NOT SET'}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between p-4 rounded-xl bg-gray-950 border border-gray-800 text-xs">
-                <span className="text-gray-300">Git Binary Available</span>
-                <span className={`px-2.5 py-1 rounded-full font-mono text-[10px] ${
-                  status?.git_available
-                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                    : 'bg-red-500/20 text-red-400 border border-red-500/30'
-                }`}>
-                  {status?.git_available ? 'READY' : 'MISSING'}
-                </span>
-              </div>
-
-              <div className="p-4 rounded-xl bg-gray-950 border border-gray-800 space-y-2 text-xs font-mono">
-                <p className="text-gray-400">WEBHOOK ENDPOINT URL:</p>
-                <p className="text-blue-400 font-bold">http://your-server-domain.com/github/webhook</p>
-              </div>
-            </div>
-          )}
+    <div className="space-y-6">
+      {/* Top Banner */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 glass-box p-6 rounded-3xl">
+        <div className="flex items-center space-x-3">
+          <div className="p-3 bg-indigo-500/10 text-indigo-400 rounded-2xl border border-indigo-500/20">
+            <Github className="w-6 h-6" />
+          </div>
+          <div>
+            <h2 className="text-xl font-extrabold text-white">GitHub Webhook & HMAC Signature Security</h2>
+            <p className="text-xs text-slate-400">Automate code audits on every `git push` with SHA-256 HMAC verification</p>
+          </div>
         </div>
 
-        {/* Setup Instructions */}
-        <div className="glass-panel p-6 rounded-2xl space-y-4">
-          <h3 className="text-sm font-semibold text-white flex items-center space-x-2">
-            <Github className="w-4 h-4 text-purple-400" />
+        <div className="px-3.5 py-1.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 text-xs font-mono flex items-center space-x-2">
+          <ShieldCheck className="w-4 h-4" />
+          <span>HMAC SHA-256 Enforced</span>
+        </div>
+      </div>
+
+      {/* Grid Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Step-by-Step Guide */}
+        <div className="lg:col-span-7 glass-box p-6 rounded-3xl space-y-6">
+          <h3 className="text-base font-bold text-white flex items-center space-x-2">
+            <Terminal className="w-4 h-4 text-cyan-400" />
             <span>GitHub Webhook Setup Guide</span>
           </h3>
 
-          <ol className="space-y-3 text-xs text-gray-300 list-decimal list-inside leading-relaxed">
-            <li className="p-2 rounded bg-gray-900/50">Go to your GitHub Repository &rarr; <span className="text-white font-medium">Settings &rarr; Webhooks</span>.</li>
-            <li className="p-2 rounded bg-gray-900/50">Click <span className="text-white font-medium">Add Webhook</span>.</li>
-            <li className="p-2 rounded bg-gray-900/50">Set <span className="text-white font-medium">Payload URL</span> to your FastAPI server URL + <code className="text-blue-400 font-mono">/github/webhook</code>.</li>
-            <li className="p-2 rounded bg-gray-900/50">Set <span className="text-white font-medium">Content type</span> to <code className="text-purple-400 font-mono">application/json</code>.</li>
-            <li className="p-2 rounded bg-gray-900/50">Set <span className="text-white font-medium">Secret</span> to match your <code className="text-emerald-400 font-mono">GITHUB_WEBHOOK_SECRET</code> in <code className="text-gray-400 font-mono">.env</code>.</li>
-            <li className="p-2 rounded bg-gray-900/50">Select <span className="text-white font-medium">Just the push event</span> and save.</li>
-          </ol>
+          <div className="space-y-4 text-xs">
+            <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-1.5">
+              <div className="font-bold text-white flex items-center space-x-2">
+                <span className="w-5 h-5 rounded-full bg-blue-600/30 text-cyan-400 flex items-center justify-center font-mono text-[10px] border border-cyan-500/30">1</span>
+                <span>Navigate to Repository Settings</span>
+              </div>
+              <p className="text-slate-400 pl-7">Go to your GitHub repository &rarr; **Settings** &rarr; **Webhooks** &rarr; **Add webhook**.</p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-1.5">
+              <div className="font-bold text-white flex items-center space-x-2">
+                <span className="w-5 h-5 rounded-full bg-blue-600/30 text-cyan-400 flex items-center justify-center font-mono text-[10px] border border-cyan-500/30">2</span>
+                <span>Configure Payload URL & Content Type</span>
+              </div>
+              <p className="text-slate-400 pl-7">Set Content type to `application/json` and paste your webhook endpoint URL.</p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-1.5">
+              <div className="font-bold text-white flex items-center space-x-2">
+                <span className="w-5 h-5 rounded-full bg-blue-600/30 text-cyan-400 flex items-center justify-center font-mono text-[10px] border border-cyan-500/30">3</span>
+                <span>Enter Secret Key for Signature Verification</span>
+              </div>
+              <p className="text-slate-400 pl-7">Enter your secret key in the Secret field to sign payloads with `X-Hub-Signature-256`.</p>
+            </div>
+          </div>
         </div>
 
+        {/* Copyable Keys Section */}
+        <div className="lg:col-span-5 glass-box p-6 rounded-3xl space-y-6">
+          <h3 className="text-base font-bold text-white flex items-center space-x-2">
+            <Lock className="w-4 h-4 text-purple-400" />
+            <span>Webhook Credentials</span>
+          </h3>
+
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-mono text-slate-400">Payload URL</label>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={webhookUrl}
+                  className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-cyan-300 font-mono text-xs focus:outline-none"
+                />
+                <button
+                  onClick={() => copyToClipboard(webhookUrl, 'url')}
+                  className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl border border-slate-700 transition-all shrink-0"
+                >
+                  {copiedUrl ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-mono text-slate-400">Webhook Secret (`GITHUB_WEBHOOK_SECRET`)</label>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={secretKey}
+                  className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-purple-300 font-mono text-xs focus:outline-none"
+                />
+                <button
+                  onClick={() => copyToClipboard(secretKey, 'secret')}
+                  className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl border border-slate-700 transition-all shrink-0"
+                >
+                  {copiedSecret ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )

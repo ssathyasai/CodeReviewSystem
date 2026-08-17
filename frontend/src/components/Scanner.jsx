@@ -1,468 +1,388 @@
 import React, { useState } from 'react'
-import { Upload, FileCode, CheckCircle, AlertTriangle, ShieldAlert, Cpu, Zap, Sparkles, Check, CornerDownRight, Github, Link } from 'lucide-react'
+import { FileCode, Github, Upload, Play, AlertTriangle, CheckCircle, ShieldAlert, Sparkles, Cpu, Zap, Code, ArrowRight, Check, RefreshCw, FileText } from 'lucide-react'
 import axios from 'axios'
 
 export default function Scanner() {
-  const [scanMode, setScanMode] = useState('file') // 'file' or 'github'
-  const [file, setFile] = useState(null)
-  const [codeContent, setCodeContent] = useState('')
-  const [repoUrl, setRepoUrl] = useState('')
-  const [branch, setBranch] = useState('main')
+  const [scanType, setScanType] = useState('code') // 'code' or 'github'
+  const [code, setCode] = useState(`import os
+import sqlite3
+
+# Vulnerable Code Sample
+DATABASE_PASSWORD = "super_secret_123"
+discount_rate = 0.25
+
+def get_user(user_input):
+    conn = sqlite3.connect("app.db")
+    cursor = conn.cursor()
+    # SQL Injection Risk
+    cursor.execute(f"SELECT * FROM users WHERE username = '{user_input}'")
+    return cursor.fetchall()
+`)
+  const [githubUrl, setGithubUrl] = useState('')
+  const [githubBranch, setGithubBranch] = useState('main')
+  const [fileObj, setFileObj] = useState(null)
+  
   const [scanning, setScanning] = useState(false)
   const [scanResult, setScanResult] = useState(null)
-  const [error, setError] = useState(null)
-  const [appliedFixes, setAppliedFixes] = useState({})
+  const [activeEngineTab, setActiveEngineTab] = useState('all')
 
-  const handleFileChange = (e) => {
-    const selectedFile = e.target.files[0]
-    if (selectedFile) {
-      setFile(selectedFile)
-      const reader = new FileReader()
-      reader.onload = (event) => {
-        setCodeContent(event.target.result)
-      }
-      reader.readAsText(selectedFile)
-    }
+  const handleSampleCode = () => {
+    setCode(`import os
+import sqlite3
+
+# Sample Financial Application
+API_KEY = "sk_live_secret_998877"
+price_discount = 0.15
+
+def execute_user_query(query_param):
+    conn = sqlite3.connect(":memory:")
+    cursor = conn.cursor()
+    # SQL Injection Vulnerability
+    cursor.execute(f"SELECT * FROM accounts WHERE id = {query_param}")
+    return cursor.fetchall()
+`)
   }
 
-  const handleRunScan = async () => {
-    if (scanMode === 'github') {
-      if (!repoUrl) {
-        setError('Please enter a valid GitHub repository URL.')
-        return
-      }
-      try {
-        setScanning(true)
-        setError(null)
-        setScanResult(null)
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    setFileObj(file)
+    const reader = new FileReader()
+    reader.onload = (event) => setCode(event.target.result)
+    reader.readAsText(file)
+  }
 
-        const res = await axios.post('/github/scan-repo', {
-          repo_url: repoUrl,
-          branch: branch || 'main'
-        })
-        setScanResult(res.data)
-      } catch (err) {
-        console.error('GitHub scan error:', err)
-        setError(err.response?.data?.error || 'GitHub repository scan failed. Ensure Git is installed.')
-      } finally {
-        setScanning(false)
-      }
-      return
-    }
-
-    if (!file && !codeContent) {
-      setError('Please select a file or enter code to scan.')
-      return
-    }
+  const handleScanCode = async () => {
+    if (!code.trim() && !fileObj) return
+    setScanning(true)
+    setScanResult(null)
 
     try {
-      setScanning(true)
-      setError(null)
-      setScanResult(null)
-
-      let uploadFile = file
-      if (!uploadFile) {
-        const blob = new Blob([codeContent], { type: 'text/plain' })
-        uploadFile = new File([blob], 'submitted_code.py', { type: 'text/plain' })
-      }
-
       const formData = new FormData()
-      formData.append('file', uploadFile)
+      if (fileObj) {
+        formData.append('file', fileObj)
+      } else {
+        const blob = new Blob([code], { type: 'text/plain' })
+        formData.append('file', blob, 'source_code.py')
+      }
 
       const res = await axios.post('/scan', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
-
       setScanResult(res.data)
     } catch (err) {
-      console.error('Scan error:', err)
-      setError(err.response?.data?.error || 'Scan failed. Please verify backend service is running.')
+      console.error('Scan failed:', err)
+      alert('Code scan failed: ' + (err.response?.data?.detail || err.message))
     } finally {
       setScanning(false)
     }
   }
 
-  const handleApplyFix = async (finding, index) => {
-    if (!finding.newCode || !file) return
-    try {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('line', finding.line || 1)
-      formData.append('new_code', finding.newCode)
+  const handleScanGithub = async () => {
+    if (!githubUrl.trim()) return
+    setScanning(true)
+    setScanResult(null)
 
-      const res = await axios.post('/apply-fix', formData)
-      if (res.data.status === 'success') {
-        setAppliedFixes(prev => ({ ...prev, [index]: 'applied' }))
-        if (res.data.updated_content) {
-          setCodeContent(res.data.updated_content)
-        }
-      }
+    try {
+      const res = await axios.post('/github/scan-repo', {
+        repo_url: githubUrl.trim(),
+        branch: githubBranch.trim() || 'main'
+      })
+      setScanResult(res.data)
     } catch (err) {
-      console.error('Apply fix error:', err)
+      console.error('GitHub scan failed:', err)
+      alert('GitHub repo scan failed: ' + (err.response?.data?.detail || err.message))
+    } finally {
+      setScanning(false)
     }
   }
 
-  const handleAddComment = async (finding, index) => {
-    if (!finding.suggestion || !file) return
-    try {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('line', finding.line || 1)
-      formData.append('suggestion', finding.suggestion)
-
-      const res = await axios.post('/add-suggestion-comment', formData)
-      if (res.data.status === 'success') {
-        setAppliedFixes(prev => ({ ...prev, [index]: 'commented' }))
-        if (res.data.updated_content) {
-          setCodeContent(res.data.updated_content)
-        }
-      }
-    } catch (err) {
-      console.error('Add comment error:', err)
-    }
+  const applyAutoFix = (oldCode, newCode) => {
+    if (!oldCode || !newCode) return
+    setCode(prev => prev.replace(oldCode, newCode))
   }
 
   return (
     <div className="space-y-8">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      {/* Header Banner */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 glass-box p-6 rounded-3xl">
         <div>
-          <h2 className="text-2xl font-bold text-white">Live Code Intelligence Scanner</h2>
-          <p className="text-sm text-gray-400">Scan Local Files or GitHub Repositories directly</p>
+          <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-cyan-400 text-xs font-mono mb-2">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>SAST + DAST + LLM Code Security Audit</span>
+          </div>
+          <h2 className="text-2xl font-extrabold text-white tracking-tight">Code Security & Governance Scanner</h2>
+          <p className="text-xs text-slate-400">Analyze source files or entire GitHub repositories for OWASP Top 10 vulnerabilities</p>
         </div>
 
-        {/* Mode Selector Tabs */}
-        <div className="flex bg-gray-900/80 p-1 rounded-xl border border-gray-800 text-xs">
+        {/* Dual Mode Switcher Pill */}
+        <div className="flex p-1.5 bg-slate-900/90 rounded-2xl border border-slate-800 self-start md:self-auto">
           <button
-            onClick={() => setScanMode('file')}
-            className={`px-4 py-2 rounded-lg font-medium transition-all flex items-center space-x-2 ${
-              scanMode === 'file' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'
+            onClick={() => setScanType('code')}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
+              scanType === 'code'
+                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-glow-blue'
+                : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <FileCode className="w-3.5 h-3.5" />
-            <span>File / Code Upload</span>
+            <FileCode className="w-4 h-4" />
+            <span>Source Code File</span>
           </button>
-
           <button
-            onClick={() => setScanMode('github')}
-            className={`px-4 py-2 rounded-lg font-medium transition-all flex items-center space-x-2 ${
-              scanMode === 'github' ? 'bg-purple-600 text-white shadow' : 'text-gray-400 hover:text-white'
+            onClick={() => setScanType('github')}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
+              scanType === 'github'
+                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-glow-purple'
+                : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Github className="w-3.5 h-3.5" />
+            <Github className="w-4 h-4" />
             <span>GitHub Repo URL</span>
           </button>
         </div>
       </div>
 
-      {/* Input Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
-        {/* Upload & Code Editor Box or GitHub Input */}
-        <div className="glass-panel p-6 rounded-2xl space-y-4">
-          
-          {scanMode === 'file' ? (
-            <>
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-white flex items-center space-x-2">
-                  <FileCode className="w-4 h-4 text-blue-400" />
-                  <span>Target Source Code</span>
-                </h3>
-                {file && (
-                  <span className="text-xs font-mono text-blue-400 px-2 py-0.5 bg-blue-500/10 rounded">
-                    {file.name}
-                  </span>
-                )}
+      {/* Main Scanner Section */}
+      {scanType === 'code' ? (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Code Input Box */}
+          <div className="lg:col-span-12 glass-box p-6 rounded-3xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <Code className="w-5 h-5 text-cyan-400" />
+                <span className="font-bold text-white text-sm">Python Source Code Editor</span>
               </div>
-
-              {/* File Dropzone */}
-              <label className="border-2 border-dashed border-gray-700 hover:border-blue-500/50 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer transition-all bg-gray-900/40">
-                <Upload className="w-6 h-6 text-gray-400 mb-2" />
-                <span className="text-xs text-gray-300 font-medium">Click to select Python file</span>
-                <span className="text-[10px] text-gray-500 font-mono mt-1">.py files supported</span>
-                <input type="file" accept=".py,.txt" onChange={handleFileChange} className="hidden" />
-              </label>
-
-              {/* Code Textarea */}
-              <textarea
-                value={codeContent}
-                onChange={(e) => setCodeContent(e.target.value)}
-                placeholder="Or paste code here directly..."
-                rows={12}
-                className="w-full bg-gray-950/80 border border-gray-800 rounded-xl p-4 text-xs font-mono text-gray-200 focus:outline-none focus:border-blue-500/50 resize-none"
-              ></textarea>
-            </>
-          ) : (
-            <div className="space-y-4">
-              <div className="flex items-center space-x-2 text-purple-400 font-semibold text-sm">
-                <Github className="w-4 h-4" />
-                <span className="text-white">Audit Remote GitHub Repository</span>
-              </div>
-              <p className="text-xs text-gray-400">
-                Clone and run multi-engine security audits on any public or private GitHub repository.
-              </p>
-
-              <div>
-                <label className="block text-xs font-mono text-gray-400 mb-1">GITHUB REPOSITORY URL</label>
-                <div className="relative">
-                  <Link className="w-4 h-4 text-gray-500 absolute left-3 top-3" />
-                  <input
-                    type="text"
-                    value={repoUrl}
-                    onChange={(e) => setRepoUrl(e.target.value)}
-                    placeholder="https://github.com/username/repository"
-                    className="w-full bg-gray-950 border border-gray-800 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-mono text-gray-400 mb-1">BRANCH NAME</label>
-                <input
-                  type="text"
-                  value={branch}
-                  onChange={(e) => setBranch(e.target.value)}
-                  placeholder="main or master"
-                  className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
-                />
-              </div>
-
-              <div className="p-3 bg-purple-950/20 border border-purple-500/20 rounded-xl text-xs text-purple-300">
-                💡 The system will clone the repository, run SAST, DAST, and LLM scans across all Python files, and store the audit report in MongoDB.
+              <div className="flex items-center space-x-3">
+                <button
+                  onClick={handleSampleCode}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono border border-slate-700 transition-all flex items-center space-x-1.5"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Load Sample Code</span>
+                </button>
+                <label className="px-3 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-cyan-300 text-xs font-mono border border-cyan-500/30 transition-all cursor-pointer flex items-center space-x-1.5">
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Upload File</span>
+                  <input type="file" accept=".py,.js,.java,.cpp,.ts" onChange={handleFileUpload} className="hidden" />
+                </label>
               </div>
             </div>
-          )}
 
-          {/* Run Button */}
-          <button
-            onClick={handleRunScan}
-            disabled={scanning}
-            className="w-full py-3 bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold text-sm rounded-xl shadow-lg shadow-blue-600/20 flex items-center justify-center space-x-2 transition-all disabled:opacity-50"
-          >
-            {scanning ? (
-              <>
-                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                <span>{scanMode === 'github' ? 'Cloning & Auditing Repo...' : 'Executing Multi-Engine Audit...'}</span>
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4" />
-                <span>{scanMode === 'github' ? 'Audit GitHub Repository' : 'Run Code Audit'}</span>
-              </>
-            )}
-          </button>
+            <div className="relative rounded-2xl overflow-hidden border border-slate-800 bg-[#090D16]">
+              <textarea
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                rows={12}
+                className="w-full p-4 bg-transparent text-slate-200 font-mono text-xs leading-relaxed focus:outline-none resize-y"
+                placeholder="Paste your source code here..."
+              />
+            </div>
 
-          {error && (
-            <p className="text-xs text-red-400 bg-red-500/10 p-3 rounded-lg border border-red-500/20">{error}</p>
-          )}
-        </div>
-
-        {/* Verdict & Summary View */}
-        <div className="glass-panel p-6 rounded-2xl space-y-6 flex flex-col justify-between">
-          <div>
-            <h3 className="text-sm font-semibold text-white mb-4">Audit Verdict & Security Score</h3>
-            
-            {scanResult ? (
-              <div className="space-y-6">
-                
-                {/* Verdict Badge */}
-                <div className={`p-6 rounded-2xl border flex items-center space-x-4 ${
-                  scanResult.status === 'critical' || scanResult.verdict?.decision === 'BLOCK'
-                    ? 'bg-red-950/30 border-red-500/40 text-red-400'
-                    : scanResult.status === 'warning' || scanResult.verdict?.decision === 'WARN'
-                    ? 'bg-yellow-950/30 border-yellow-500/40 text-yellow-400'
-                    : 'bg-emerald-950/30 border-emerald-500/40 text-emerald-400'
-                }`}>
-                  {scanResult.status === 'critical' || scanResult.verdict?.decision === 'BLOCK' ? (
-                    <ShieldAlert className="w-10 h-10 flex-shrink-0" />
-                  ) : scanResult.status === 'warning' || scanResult.verdict?.decision === 'WARN' ? (
-                    <AlertTriangle className="w-10 h-10 flex-shrink-0" />
-                  ) : (
-                    <CheckCircle className="w-10 h-10 flex-shrink-0" />
-                  )}
-                  <div>
-                    <h4 className="text-xl font-bold font-mono">
-                      VERDICT: {scanResult.status?.toUpperCase() || scanResult.verdict?.decision || 'PASSED'}
-                    </h4>
-                    <p className="text-xs opacity-90">{scanResult.message || scanResult.verdict?.reason}</p>
-                  </div>
-                </div>
-
-                {/* Engine Summary Pills */}
-                {scanResult.summary ? (
-                  <div className="space-y-2 text-xs font-mono">
-                    <div className="p-3 bg-gray-900 rounded-xl border border-gray-800 flex justify-between">
-                      <span>FILES ANALYZED</span>
-                      <span className="text-white">{scanResult.files_analyzed}</span>
-                    </div>
-                    <div className="p-3 bg-gray-900 rounded-xl border border-gray-800 flex justify-between">
-                      <span>TOTAL ISSUES DETECTED</span>
-                      <span className="text-yellow-400">{scanResult.summary?.total_issues}</span>
-                    </div>
-                    <div className="p-3 bg-gray-900 rounded-xl border border-gray-800 flex justify-between">
-                      <span>CRITICAL VULNERABILITIES</span>
-                      <span className="text-red-400">{scanResult.summary?.critical_issues}</span>
-                    </div>
-                  </div>
+            <div className="flex justify-end">
+              <button
+                onClick={handleScanCode}
+                disabled={scanning}
+                className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold text-sm rounded-2xl shadow-glow-blue transition-all disabled:opacity-50"
+              >
+                {scanning ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Running Security Audit Engines...</span>
+                  </>
                 ) : (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-gray-900/60 border border-gray-800 text-xs">
-                      <span className="flex items-center space-x-2 text-gray-300">
-                        <Cpu className="w-4 h-4 text-blue-400" />
-                        <span>SAST Static Engine</span>
-                      </span>
-                      <span className="font-mono text-blue-400">
-                        {scanResult.engines?.sast?.findings?.length || 0} Issues
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-gray-900/60 border border-gray-800 text-xs">
-                      <span className="flex items-center space-x-2 text-gray-300">
-                        <Zap className="w-4 h-4 text-purple-400" />
-                        <span>DAST Dynamic Engine</span>
-                      </span>
-                      <span className="font-mono text-purple-400">
-                        {scanResult.engines?.dast?.findings?.length || 0} Dynamic Risks
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-gray-900/60 border border-gray-800 text-xs">
-                      <span className="flex items-center space-x-2 text-gray-300">
-                        <Sparkles className="w-4 h-4 text-cyan-400" />
-                        <span>LLM Governance Review</span>
-                      </span>
-                      <span className="font-mono text-cyan-400">
-                        {scanResult.engines?.governance?.findings?.length || 0} Violations
-                      </span>
-                    </div>
-                  </div>
+                  <>
+                    <Play className="w-4 h-4 fill-current" />
+                    <span>Audit Source Code</span>
+                  </>
                 )}
-
-              </div>
-            ) : (
-              <div className="h-64 flex flex-col items-center justify-center text-center text-gray-500 space-y-2">
-                <FileCode className="w-12 h-12 stroke-1" />
-                <p className="text-sm">Select a file, enter code, or paste a GitHub URL to start audit.</p>
-              </div>
-            )}
+              </button>
+            </div>
           </div>
         </div>
+      ) : (
+        /* GitHub URL Input Box */
+        <div className="glass-box p-8 rounded-3xl space-y-6">
+          <div className="flex items-center space-x-3">
+            <div className="p-3 bg-purple-500/10 text-purple-400 rounded-2xl border border-purple-500/20">
+              <Github className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="font-bold text-white text-base">Audit Complete GitHub Repository</h3>
+              <p className="text-xs text-slate-400">Downloads repository archive and analyzes all Python files across subfolders</p>
+            </div>
+          </div>
 
-      </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-2 space-y-1.5">
+              <label className="text-xs font-mono text-slate-400">GitHub Repository URL</label>
+              <input
+                type="text"
+                value={githubUrl}
+                onChange={(e) => setGithubUrl(e.target.value)}
+                placeholder="https://github.com/username/repository-name"
+                className="w-full px-4 py-3 bg-slate-900/90 border border-slate-800 rounded-2xl text-slate-200 text-xs font-mono focus:outline-none focus:border-purple-500"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-mono text-slate-400">Branch Name</label>
+              <input
+                type="text"
+                value={githubBranch}
+                onChange={(e) => setGithubBranch(e.target.value)}
+                placeholder="main"
+                className="w-full px-4 py-3 bg-slate-900/90 border border-slate-800 rounded-2xl text-slate-200 text-xs font-mono focus:outline-none focus:border-purple-500"
+              />
+            </div>
+          </div>
 
-      {/* Detailed Findings List */}
+          <div className="flex justify-end">
+            <button
+              onClick={handleScanGithub}
+              disabled={scanning}
+              className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold text-sm rounded-2xl shadow-glow-purple transition-all disabled:opacity-50"
+            >
+              {scanning ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Fetching & Scanning Repository...</span>
+                </>
+              ) : (
+                <>
+                  <Play className="w-4 h-4 fill-current" />
+                  <span>Audit GitHub Repository</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Audit Results Section */}
       {scanResult && (
-        <div className="glass-panel p-6 rounded-2xl space-y-6">
-          <h3 className="text-lg font-bold text-white">Detected Findings & Remediation</h3>
+        <div className="space-y-6 animate-fadeIn">
+          {/* Security Verdict Banner */}
+          {(() => {
+            const verdict = scanResult.verdict?.decision || (scanResult.can_deploy === false || scanResult.status === 'critical' ? 'BLOCK' : 'APPROVE')
+            const isBlock = verdict === 'BLOCK'
+            const isWarn = verdict === 'WARN'
 
-          {/* GitHub Files Breakdown */}
-          {scanResult.files?.map((fileItem, fIdx) => (
-            <div key={`file-${fIdx}`} className="glass-card p-5 rounded-xl border border-gray-800 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-bold text-blue-400 font-mono">{fileItem.path}</span>
-                <span className="text-xs text-gray-400 font-mono">{fileItem.findings_count || 0} issues</span>
-              </div>
-
-              {fileItem.engines?.governance?.findings?.map((finding, idx) => (
-                <div key={`file-gov-${idx}`} className="p-3 bg-red-950/20 border-l-2 border-red-500 rounded text-xs space-y-1">
-                  <div className="flex items-center justify-between text-red-400 font-semibold">
-                    <span>{finding.rule} (Line {finding.line})</span>
-                    <span>{finding.severity}</span>
+            return (
+              <div className={`p-8 rounded-3xl border ${
+                isBlock ? 'bg-rose-950/40 border-rose-500/40' : isWarn ? 'bg-amber-950/40 border-amber-500/40' : 'bg-emerald-950/40 border-emerald-500/40'
+              }`}>
+                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                  <div className="flex items-center space-x-4">
+                    <div className={`p-4 rounded-2xl ${
+                      isBlock ? 'bg-rose-500/20 text-rose-400' : isWarn ? 'bg-amber-500/20 text-amber-400' : 'bg-emerald-500/20 text-emerald-400'
+                    }`}>
+                      {isBlock ? <ShieldAlert className="w-8 h-8" /> : isWarn ? <AlertTriangle className="w-8 h-8" /> : <CheckCircle className="w-8 h-8" />}
+                    </div>
+                    <div>
+                      <div className="flex items-center space-x-3">
+                        <span className={`px-3 py-1 rounded-full text-xs font-mono font-bold tracking-wider ${
+                          isBlock ? 'badge-critical-glow' : isWarn ? 'badge-warning-glow' : 'badge-success-glow'
+                        }`}>
+                          VERDICT: {verdict}
+                        </span>
+                        <span className="text-xs text-slate-400 font-mono">
+                          Files Analyzed: {scanResult.files_analyzed || scanResult.summary?.files_analyzed || 1}
+                        </span>
+                      </div>
+                      <h3 className="text-xl font-extrabold text-white mt-1">
+                        {scanResult.verdict?.reason || scanResult.message || 'Security Audit Completed'}
+                      </h3>
+                    </div>
                   </div>
-                  <p className="text-gray-300">{finding.message}</p>
-                </div>
-              ))}
-            </div>
-          ))}
-
-          {/* Single Upload Governance Findings */}
-          {scanResult.engines?.governance?.findings?.map((finding, idx) => (
-            <div key={`gov-${idx}`} className="glass-card p-5 rounded-xl border-l-4 border-l-red-500 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <span className="px-2 py-0.5 rounded bg-red-500/20 text-red-400 text-xs font-mono font-bold">
-                    {finding.severity || 'HIGH'}
-                  </span>
-                  <span className="text-sm font-semibold text-white">{finding.rule}</span>
-                  {finding.line && (
-                    <span className="text-xs text-gray-400 font-mono">Line {finding.line}</span>
-                  )}
                 </div>
               </div>
+            )
+          })()}
 
-              <p className="text-xs text-gray-300">{finding.message}</p>
+          {/* Engine Accordion Findings */}
+          <div className="glass-box p-6 rounded-3xl space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <h3 className="text-base font-bold text-white flex items-center space-x-2">
+                <Sparkles className="w-4 h-4 text-cyan-400" />
+                <span>Multi-Engine Findings Breakdown</span>
+              </h3>
+            </div>
 
-              {finding.suggestion && (
-                <div className="text-xs text-blue-300 bg-blue-950/30 p-2.5 rounded-lg border border-blue-500/20 flex items-start space-x-2">
-                  <CornerDownRight className="w-4 h-4 flex-shrink-0 text-blue-400 mt-0.5" />
-                  <span>{finding.suggestion}</span>
+            {/* Findings List */}
+            {(() => {
+              const sastFindings = scanResult.engines?.sast?.findings || scanResult.sast_results?.findings || []
+              const dastFindings = scanResult.engines?.dast?.findings || scanResult.dast_results?.findings || []
+              const govFindings = scanResult.engines?.governance?.findings || scanResult.governance_results?.findings || []
+
+              // If scanning GitHub repo, aggregate findings from files
+              let repoFindings = []
+              if (scanResult.files && Array.isArray(scanResult.files)) {
+                scanResult.files.forEach(f => {
+                  if (f.engines) {
+                    repoFindings.push(...(f.engines.sast?.findings || []))
+                    repoFindings.push(...(f.engines.dast?.findings || []))
+                    repoFindings.push(...(f.engines.governance?.findings || []))
+                  }
+                })
+              }
+
+              const allFindings = [...sastFindings, ...dastFindings, ...govFindings, ...repoFindings]
+
+              if (allFindings.length === 0) {
+                return (
+                  <div className="p-8 text-center space-y-2">
+                    <CheckCircle className="w-10 h-10 text-emerald-400 mx-auto" />
+                    <h4 className="text-base font-bold text-white">Zero Vulnerabilities Detected!</h4>
+                    <p className="text-xs text-slate-400 font-mono">Code complies with OWASP Top 10 security standards.</p>
+                  </div>
+                )
+              }
+
+              return (
+                <div className="space-y-4">
+                  {allFindings.map((finding, idx) => (
+                    <div key={idx} className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-3">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1">
+                          <div className="flex items-center space-x-2">
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+                              finding.severity === 'CRITICAL' ? 'badge-critical-glow' : finding.severity === 'HIGH' ? 'badge-warning-glow' : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                            }`}>
+                              {finding.severity || 'MEDIUM'}
+                            </span>
+                            <span className="text-xs font-mono text-cyan-400 font-semibold">{finding.rule}</span>
+                            {finding.line && <span className="text-[11px] text-slate-500 font-mono">Line {finding.line}</span>}
+                          </div>
+                          <p className="text-xs text-slate-300">{finding.message}</p>
+                        </div>
+                      </div>
+
+                      {/* Code Diff Box if Auto-Fix available */}
+                      {finding.oldCode && finding.newCode && (
+                        <div className="p-4 rounded-xl bg-[#070A11] border border-slate-800/80 space-y-2 font-mono text-xs">
+                          <div className="flex items-center justify-between text-[11px] text-slate-500">
+                            <span>RECOMMENDED CODE FIX</span>
+                            <button
+                              onClick={() => applyAutoFix(finding.oldCode, finding.newCode)}
+                              className="px-2.5 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-[10px] font-bold border border-emerald-500/30 transition-all flex items-center space-x-1"
+                            >
+                              <Check className="w-3 h-3" />
+                              <span>Apply Auto-Fix</span>
+                            </button>
+                          </div>
+                          <div className="text-rose-400 bg-rose-950/30 p-2 rounded border border-rose-500/20 overflow-x-auto">
+                            - {finding.oldCode}
+                          </div>
+                          <div className="text-emerald-400 bg-emerald-950/30 p-2 rounded border border-emerald-500/20 overflow-x-auto">
+                            + {finding.newCode}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              )}
-
-              {finding.newCode && (
-                <div className="space-y-1.5 pt-2">
-                  <span className="text-[10px] font-mono text-emerald-400 uppercase">Suggested Code Fix:</span>
-                  <pre className="p-3 bg-gray-950 rounded-lg text-xs font-mono text-emerald-300 overflow-x-auto border border-emerald-500/20">
-                    {finding.newCode}
-                  </pre>
-                </div>
-              )}
-
-              <div className="pt-2 flex items-center space-x-3">
-                {finding.newCode && (
-                  <button
-                    onClick={() => handleApplyFix(finding, `gov-${idx}`)}
-                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium rounded-lg flex items-center space-x-1.5 transition-all"
-                  >
-                    {appliedFixes[`gov-${idx}`] === 'applied' ? (
-                      <>
-                        <Check className="w-3.5 h-3.5" />
-                        <span>Fix Applied</span>
-                      </>
-                    ) : (
-                      <span>Apply Auto-Fix</span>
-                    )}
-                  </button>
-                )}
-
-                {finding.suggestion && (
-                  <button
-                    onClick={() => handleAddComment(finding, `gov-${idx}`)}
-                    className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-medium rounded-lg flex items-center space-x-1.5 transition-all border border-gray-700"
-                  >
-                    <span>Insert Comment</span>
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-
-          {/* SAST Findings */}
-          {scanResult.engines?.sast?.findings?.map((finding, idx) => (
-            <div key={`sast-${idx}`} className="glass-card p-5 rounded-xl border-l-4 border-l-blue-500 space-y-3">
-              <div className="flex items-center space-x-2">
-                <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 text-xs font-mono font-bold">
-                  {finding.severity || 'HIGH'}
-                </span>
-                <span className="text-sm font-semibold text-white">{finding.rule}</span>
-                <span className="text-xs text-gray-400 font-mono">Line {finding.line}</span>
-              </div>
-              <p className="text-xs text-gray-300">{finding.message}</p>
-            </div>
-          ))}
-
-          {/* DAST Findings */}
-          {scanResult.engines?.dast?.findings?.map((finding, idx) => (
-            <div key={`dast-${idx}`} className="glass-card p-5 rounded-xl border-l-4 border-l-purple-500 space-y-3">
-              <div className="flex items-center space-x-2">
-                <span className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-400 text-xs font-mono font-bold">
-                  {finding.severity || 'MEDIUM'}
-                </span>
-                <span className="text-sm font-semibold text-white">{finding.issue}</span>
-              </div>
-              <p className="text-xs text-gray-300">{finding.details}</p>
-            </div>
-          ))}
+              )
+            })()}
+          </div>
         </div>
       )}
     </div>

@@ -1,118 +1,118 @@
 import React, { useState, useEffect } from 'react'
-import { History, Search, Eye, AlertTriangle, CheckCircle, ShieldAlert, X } from 'lucide-react'
+import { History, Search, RefreshCw, Eye, CheckCircle, AlertTriangle, ShieldAlert, Code, FileText, X } from 'lucide-react'
 import axios from 'axios'
 
 export default function ScanHistory() {
   const [scans, setScans] = useState([])
   const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')
+  const [search, setSearch] = useState('')
   const [selectedScan, setSelectedScan] = useState(null)
 
   useEffect(() => {
-    fetchScanHistory()
+    fetchScans()
   }, [])
 
-  const fetchScanHistory = async () => {
+  const fetchScans = async () => {
     try {
       setLoading(true)
       const res = await axios.get('/scans?limit=50')
       setScans(res.data.scans || [])
     } catch (err) {
-      console.error('Error fetching scan history:', err)
+      console.error('Failed to fetch scan history:', err)
     } finally {
       setLoading(false)
     }
   }
 
   const filteredScans = scans.filter(scan => {
-    const target = scan.file || scan.project_name || scan.scan_id || ''
-    return target.toLowerCase().includes(searchTerm.toLowerCase())
+    const term = search.toLowerCase()
+    const target = (scan.file || scan.repository || scan.project_name || '').toLowerCase()
+    const scanId = (scan.scan_id || '').toLowerCase()
+    return target.includes(term) || scanId.includes(term)
   })
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-white">Scan History & Audit Logs</h2>
-          <p className="text-sm text-gray-400">Stored scan records retrieved from MongoDB</p>
+    <div className="space-y-6">
+      {/* Top Banner */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 glass-box p-6 rounded-3xl">
+        <div className="flex items-center space-x-3">
+          <div className="p-3 bg-purple-500/10 text-purple-400 rounded-2xl border border-purple-500/20">
+            <History className="w-6 h-6" />
+          </div>
+          <div>
+            <h2 className="text-xl font-extrabold text-white">Historical Security Audit Records</h2>
+            <p className="text-xs text-slate-400">Stored scan history retrieved from MongoDB Atlas</p>
+          </div>
         </div>
 
-        {/* Search */}
-        <div className="relative">
-          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search scans..."
-            className="bg-gray-950 border border-gray-800 rounded-xl pl-9 pr-4 py-2 text-xs text-white focus:outline-none focus:border-blue-500 w-64"
-          />
+        <div className="flex items-center space-x-3">
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Filter by file or scan ID..."
+              className="pl-9 pr-4 py-2 bg-slate-900/90 border border-slate-800 rounded-xl text-slate-200 text-xs font-mono focus:outline-none focus:border-purple-500"
+            />
+          </div>
+          <button
+            onClick={fetchScans}
+            className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700 transition-all"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
         </div>
       </div>
 
-      {/* History Table */}
-      <div className="glass-panel p-6 rounded-2xl">
+      {/* Table Container */}
+      <div className="glass-box rounded-3xl overflow-hidden">
         {loading ? (
-          <p className="text-xs text-gray-500 py-12 text-center">Loading audit history from MongoDB...</p>
+          <div className="p-12 text-center text-slate-400 font-mono text-xs space-y-2">
+            <RefreshCw className="w-6 h-6 animate-spin mx-auto text-purple-400" />
+            <p>Loading records from MongoDB...</p>
+          </div>
         ) : filteredScans.length === 0 ? (
-          <div className="text-center py-12 text-gray-500 space-y-2">
-            <History className="w-10 h-10 mx-auto stroke-1" />
-            <p className="text-xs">No matching scan history found.</p>
+          <div className="p-12 text-center text-slate-500 font-mono text-xs">
+            No scan history records found matching "{search}".
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="text-gray-400 uppercase bg-gray-800/40 font-mono">
+              <thead className="bg-slate-900/90 text-slate-400 uppercase font-mono border-b border-slate-800">
                 <tr>
-                  <th className="px-4 py-3">Scan ID</th>
-                  <th className="px-4 py-3">Target</th>
-                  <th className="px-4 py-3">Verdict</th>
-                  <th className="px-4 py-3">Engine Findings</th>
-                  <th className="px-4 py-3">Timestamp</th>
-                  <th className="px-4 py-3 text-right">Action</th>
+                  <th className="px-6 py-4">Scan ID</th>
+                  <th className="px-6 py-4">Audit Target</th>
+                  <th className="px-6 py-4">Verdict</th>
+                  <th className="px-6 py-4">Issues Found</th>
+                  <th className="px-6 py-4">Timestamp</th>
+                  <th className="px-6 py-4 text-right">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-800">
+              <tbody className="divide-y divide-slate-800/60">
                 {filteredScans.map((scan) => {
-                  const decision = scan.verdict?.decision || (scan.can_deploy ? 'APPROVE' : 'BLOCK')
-                  const sastCount = scan.engines?.sast?.findings?.length || 0
-                  const dastCount = scan.engines?.dast?.findings?.length || 0
-                  const govCount = scan.engines?.governance?.findings?.length || 0
-                  const totalIssues = sastCount + dastCount + govCount
-
+                  const decision = scan.verdict?.decision || (scan.status === 'critical' || scan.can_deploy === false ? 'BLOCK' : 'APPROVE')
+                  const issues = scan.summary?.total_issues || scan.critical_count || 0
                   return (
-                    <tr key={scan.scan_id || Math.random()} className="hover:bg-gray-800/30">
-                      <td className="px-4 py-3 font-mono text-blue-400">{scan.scan_id?.slice(0, 8) || 'N/A'}</td>
-                      <td className="px-4 py-3 text-white font-medium">{scan.file || scan.project_name || 'Uploaded Code'}</td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-0.5 rounded-full font-mono text-[10px] ${
-                          decision === 'BLOCK'
-                            ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-                            : decision === 'WARN'
-                            ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
-                            : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    <tr key={scan.scan_id || Math.random()} className="hover:bg-slate-800/40 transition-colors">
+                      <td className="px-6 py-4 font-mono text-cyan-400 font-semibold">{scan.scan_id?.slice(0, 8) || 'N/A'}</td>
+                      <td className="px-6 py-4 text-slate-200 font-medium">{scan.file || scan.repository || scan.project_name || 'Uploaded File'}</td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2.5 py-1 rounded-full font-mono text-[10px] font-bold ${
+                          decision === 'BLOCK' ? 'badge-critical-glow' : decision === 'WARN' ? 'badge-warning-glow' : 'badge-success-glow'
                         }`}>
                           {decision}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-gray-300 font-mono">
-                        {totalIssues > 0 ? (
-                          <span className="text-yellow-400">{totalIssues} Total Issues</span>
-                        ) : (
-                          <span className="text-emerald-400">0 Issues</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-gray-400 font-mono">
-                        {scan.timestamp ? new Date(scan.timestamp).toLocaleString() : 'N/A'}
-                      </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-6 py-4 font-mono text-slate-300">{issues} issue(s)</td>
+                      <td className="px-6 py-4 font-mono text-slate-400">{scan.timestamp ? new Date(scan.timestamp).toLocaleString() : 'N/A'}</td>
+                      <td className="px-6 py-4 text-right">
                         <button
                           onClick={() => setSelectedScan(scan)}
-                          className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-lg text-xs font-medium border border-gray-700 transition-all inline-flex items-center space-x-1"
+                          className="px-3 py-1 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 text-xs font-medium border border-purple-500/30 transition-all flex items-center space-x-1.5 ml-auto"
                         >
                           <Eye className="w-3.5 h-3.5" />
-                          <span>View Details</span>
+                          <span>Details</span>
                         </button>
                       </td>
                     </tr>
@@ -124,33 +124,47 @@ export default function ScanHistory() {
         )}
       </div>
 
-      {/* Detail Modal */}
+      {/* Audit Detail Modal */}
       {selectedScan && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="glass-panel bg-gray-900 border border-gray-700 rounded-2xl max-w-3xl w-full max-h-[85vh] overflow-y-auto p-6 space-y-6">
-            <div className="flex items-center justify-between border-b border-gray-800 pb-4">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0B111E] border border-slate-800 rounded-3xl max-w-3xl w-full p-6 space-y-4 max-h-[85vh] flex flex-col shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
               <div>
-                <h3 className="text-lg font-bold text-white">Scan Details</h3>
-                <p className="text-xs font-mono text-gray-400">ID: {selectedScan.scan_id}</p>
+                <h3 className="font-bold text-white text-lg">Audit Record Details</h3>
+                <p className="text-xs text-slate-400 font-mono">Scan ID: {selectedScan.scan_id}</p>
               </div>
-              <button onClick={() => setSelectedScan(null)} className="text-gray-400 hover:text-white">
-                <X className="w-5 h-5" />
+              <button onClick={() => setSelectedScan(null)} className="p-2 text-slate-400 hover:text-white rounded-xl bg-slate-800/60">
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="space-y-4 text-xs font-mono">
-              <div className="p-4 rounded-xl bg-gray-950 border border-gray-800 space-y-1">
-                <p className="text-gray-400">TARGET: <span className="text-white">{selectedScan.file || selectedScan.project_name}</span></p>
-                <p className="text-gray-400">TIMESTAMP: <span className="text-white">{selectedScan.timestamp}</span></p>
-                <p className="text-gray-400">DECISION: <span className="text-blue-400">{selectedScan.verdict?.decision || 'N/A'}</span></p>
+            <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+              <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2 font-mono text-xs">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Target File / Repo:</span>
+                  <span className="text-cyan-400 font-bold">{selectedScan.file || selectedScan.repository || selectedScan.project_name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Verdict:</span>
+                  <span className="text-white font-bold">{selectedScan.verdict?.decision || selectedScan.status}</span>
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <h4 className="text-sm font-bold text-white font-sans">Raw Audit Response JSON</h4>
-                <pre className="p-4 bg-gray-950 rounded-xl text-emerald-300 text-[11px] overflow-x-auto border border-gray-800 max-h-96">
+              <div className="space-y-1">
+                <h4 className="text-xs font-mono text-slate-400">RAW AUDIT JSON DATA</h4>
+                <pre className="p-4 rounded-2xl bg-[#070B14] border border-slate-800/80 text-cyan-300 font-mono text-xs overflow-x-auto max-h-64">
                   {JSON.stringify(selectedScan, null, 2)}
                 </pre>
               </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={() => setSelectedScan(null)}
+                className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium text-xs border border-slate-700"
+              >
+                Close Details
+              </button>
             </div>
           </div>
         </div>
