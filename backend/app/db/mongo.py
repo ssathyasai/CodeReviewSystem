@@ -285,11 +285,21 @@ class Database:
     def _init_indexes(self):
         if not self.use_fallback and self.db is not None:
             try:
-                self.db.scans.create_index([("scan_id", pymongo.ASCENDING)], unique=True)
+                # Clean up legacy unique non-sparse scan_id index if present
+                try:
+                    existing_scan_indexes = self.db.scans.index_information()
+                    if "scan_id_1" in existing_scan_indexes and existing_scan_indexes["scan_id_1"].get("unique"):
+                        self.db.scans.drop_index("scan_id_1")
+                        logger.info("Dropped legacy non-sparse unique index 'scan_id_1'.")
+                except Exception as drop_err:
+                    logger.debug(f"Index drop note: {drop_err}")
+
+                self.db.scans.create_index([("id", pymongo.ASCENDING)], unique=True, sparse=True)
+                self.db.scans.create_index([("scan_id", pymongo.ASCENDING)], sparse=True)
                 self.db.scans.create_index([("created_at", pymongo.DESCENDING)])
                 self.db.findings.create_index([("scan_id", pymongo.ASCENDING), ("severity", pymongo.ASCENDING)])
                 self.db.findings.create_index([("rule_id", pymongo.ASCENDING)])
-                self.db.governance_policies.create_index([("policy_id", pymongo.ASCENDING)], unique=True)
+                self.db.governance_policies.create_index([("policy_id", pymongo.ASCENDING)], unique=True, sparse=True)
                 self.db.governance_events.create_index([("timestamp", pymongo.DESCENDING)])
                 self.db.ai_reviews.create_index([("scan_id", pymongo.ASCENDING)])
                 self.db.audit_logs.create_index([("timestamp", pymongo.DESCENDING)])

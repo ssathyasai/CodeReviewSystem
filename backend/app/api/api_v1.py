@@ -794,6 +794,7 @@ async def seed_demo_data():
     # Create demo scan
     demo_scan = {
         "id": demo_scan_id,
+        "scan_id": demo_scan_id,
         "project_name": "FinTech-Payment-Gateway",
         "input_type": "GITHUB",
         "source_identifier": "https://github.com/fintech-corp/payment-gateway-service",

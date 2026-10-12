@@ -69,6 +69,7 @@ class ScanSummary(BaseModel):
 
 class Scan(BaseModel):
     id: str = Field(..., description="Unique scan ID (e.g. scan-abc123)")
+    scan_id: Optional[str] = None
     project_name: str
     input_type: InputTypeEnum
     
@@ -104,6 +105,10 @@ class Scan(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+
+    def model_post_init(self, __context: Any) -> None:
+        if not self.scan_id:
+            self.scan_id = self.id
 
     model_config = ConfigDict(use_enum_values=True)
 
