@@ -36,8 +36,14 @@ class AiReviewEngine:
         """
         recommendations: List[AiReviewItem] = []
         
-        # Focus on top priority findings (limit to 15 key findings to avoid overwhelming)
-        priority_findings = [f for f in findings if f.severity in ["CRITICAL", "HIGH", "MEDIUM"]][:15]
+        # Prioritize Critical, High, Medium, but ensure Low findings also receive AI reviews up to 15
+        priority_findings = [f for f in findings if getattr(f, "severity", "") in ["CRITICAL", "HIGH", "MEDIUM"]]
+        if len(priority_findings) < 15:
+            for f in findings:
+                if f not in priority_findings:
+                    priority_findings.append(f)
+                if len(priority_findings) >= 15:
+                    break
 
         for finding in priority_findings:
             if not finding.file_path:

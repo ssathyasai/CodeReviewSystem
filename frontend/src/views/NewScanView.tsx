@@ -65,7 +65,7 @@ export const NewScanView: React.FC<Props> = ({ activeScanId, onScanChange }) => 
   const [findings, setFindings] = useState<Finding[]>([]);
   const [aiReviews, setAiReviews] = useState<AiReviewSummary | null>(null);
   const [directoryInfo, setDirectoryInfo] = useState<ScanDirectoryInfo | null>(null);
-  const [activeResultsTab, setActiveResultsTab] = useState<'remediation' | 'findings' | 'directory'>('remediation');
+  const [activeResultsTab, setActiveResultsTab] = useState<'findings' | 'remediation' | 'directory'>('findings');
   const [loadingResults, setLoadingResults] = useState(false);
   const [severityFilter, setSeverityFilter] = useState<string>('ALL');
   const [domainFilter, setDomainFilter] = useState<'ALL' | 'CODE_QUALITY' | 'SAST' | 'DAST' | 'GOVERNANCE'>('ALL');
@@ -685,19 +685,6 @@ export const NewScanView: React.FC<Props> = ({ activeScanId, onScanChange }) => 
         <div className="flex items-center gap-2 border-b border-slate-200 pb-2 overflow-x-auto">
           <button
             type="button"
-            onClick={() => setActiveResultsTab('remediation')}
-            className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer shrink-0 ${
-              activeResultsTab === 'remediation'
-                ? 'bg-blue-600 text-white shadow-xs'
-                : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
-            }`}
-          >
-            <Zap className="w-4 h-4 text-amber-300" />
-            <span>⚡ Production Fixes & Unified Diffs ({aiReviews?.recommendations?.length || scan.summary?.total_findings || 0})</span>
-          </button>
-
-          <button
-            type="button"
             onClick={() => {
               setActiveResultsTab('findings');
               setDomainFilter('ALL');
@@ -710,6 +697,19 @@ export const NewScanView: React.FC<Props> = ({ activeScanId, onScanChange }) => 
           >
             <ShieldAlert className="w-4 h-4" />
             <span>Security & Quality Audit ({findings.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveResultsTab('remediation')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer shrink-0 ${
+              activeResultsTab === 'remediation'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
+            }`}
+          >
+            <Zap className="w-4 h-4 text-amber-300" />
+            <span>⚡ Production Fixes & Unified Diffs ({aiReviews?.recommendations?.length || scan.summary?.total_findings || 0})</span>
           </button>
 
           <button
@@ -767,12 +767,26 @@ export const NewScanView: React.FC<Props> = ({ activeScanId, onScanChange }) => 
 
             {/* List of Unified Diff Patches */}
             {(!aiReviews?.recommendations || aiReviews.recommendations.length === 0) ? (
-              <div className="bg-white p-12 rounded-2xl border border-slate-200 text-center space-y-3">
+              <div className="bg-white p-12 rounded-2xl border border-slate-200 text-center space-y-4">
                 <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto" />
-                <h4 className="text-sm font-bold text-slate-900">Zero Pending Fixes Required</h4>
-                <p className="text-xs text-slate-400">
-                  All security and quality fixes are verified and ready for production deployment.
+                <h4 className="text-sm font-bold text-slate-900">
+                  {findings.length > 0 ? `${findings.length} Audit Item(s) Found` : 'Zero Pending Fixes Required'}
+                </h4>
+                <p className="text-xs text-slate-500 max-w-md mx-auto">
+                  {findings.length > 0
+                    ? `The pipeline identified ${findings.length} security / quality item(s). Switch to the "Security & Quality Audit" tab to review line-by-line items and code fixes.`
+                    : 'All security and quality checks are verified and ready for zero-defect production release.'}
                 </p>
+                {findings.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveResultsTab('findings')}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs inline-flex items-center gap-1.5"
+                  >
+                    <ShieldAlert className="w-3.5 h-3.5" />
+                    <span>View Security Audit Items ({findings.length})</span>
+                  </button>
+                )}
               </div>
             ) : (
               <div className="space-y-4">
