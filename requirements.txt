@@ -1,0 +1,26 @@
+# AI Code Review & Quality Assurance System - Backend Dependencies
+
+# Web & API Framework
+fastapi>=0.110.0
+uvicorn[standard]>=0.28.0
+gunicorn>=21.2.0
+pydantic>=2.6.0
+python-dotenv>=1.0.0
+
+# HTTP & Integration
+httpx>=0.27.0
+python-multipart>=0.0.9
+
+# Database
+pymongo>=4.6.0
+
+# PDF Report Generation
+reportlab>=4.1.0
+
+# Security Scanners (Optional / Local AST)
+bandit>=1.7.8
+
+# Testing & Quality
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+anyio>=4.0.0

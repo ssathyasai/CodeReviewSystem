@@ -1,0 +1,17 @@
+.git
+.gitignore
+.env
+.env.*
+node_modules
+frontend/node_modules
+.pytest_cache
+__pycache__
+*.pyc
+data/workspaces/*
+!data/workspaces/.gitkeep
+data/uploads/*
+!data/uploads/.gitkeep
+data/reports/*
+!data/reports/.gitkeep
+data/local_db/*
+!data/local_db/.gitkeep
