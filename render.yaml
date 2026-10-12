@@ -18,7 +18,7 @@ services:
       - key: PYTHON_VERSION
         value: 3.11.9
       - key: AI_PROVIDER
-        value: local
+        value: groq
       - key: MONGODB_URI
         sync: false
       - key: MONGODB_DB_NAME
@@ -36,9 +36,12 @@ services:
 
   # ---------------------------------------------------------------------------
   # 2. React / Vite Frontend Static Site (Free tier, global CDN)
+  # In Render Blueprint, static sites are specified with:
+  # type: web + runtime: static
   # ---------------------------------------------------------------------------
-  - type: static
+  - type: web
     name: codereview-frontend
+    runtime: static
     plan: free
     rootDir: frontend
     buildCommand: npm install && npm run build
@@ -51,6 +54,6 @@ services:
     envVars:
       - key: VITE_API_URL
         fromService:
-          name: codereview-backend
           type: web
-          property: host
+          name: codereview-backend
+          property: url
