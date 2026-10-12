@@ -16,13 +16,20 @@ REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 WORKSPACES_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def get_env_str(key: str, default: str = "") -> str:
+    val = os.getenv(key, default)
+    if not val:
+        return default
+    return val.strip().strip('"').strip("'").replace("\r", "").replace("\n", "").strip()
+
+
 class Settings(BaseModel):
     APP_NAME: str = "AI Code Review & Quality Assurance System"
     APP_VERSION: str = "2.0.0"
     DEBUG: bool = os.getenv("DEBUG", "true").lower() == "true"
     
     # Server
-    HOST: str = os.getenv("HOST", "0.0.0.0")
+    HOST: str = get_env_str("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))
     CORS_ORIGINS: list[str] = [
         "http://localhost:5173",
@@ -35,21 +42,21 @@ class Settings(BaseModel):
     ]
     
     # Database
-    MONGODB_URI: str = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
-    MONGODB_DB_NAME: str = os.getenv("MONGODB_DB_NAME", "codereview_db")
+    MONGODB_URI: str = get_env_str("MONGODB_URI", "mongodb://localhost:27017")
+    MONGODB_DB_NAME: str = get_env_str("MONGODB_DB_NAME", "codereview_db")
     
     # AI Providers
-    AI_PROVIDER: str = os.getenv("AI_PROVIDER", "local")  # "openai", "gemini", "ollama", "groq", "local"
-    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
-    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
-    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
-    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
-    OLLAMA_URL: str = os.getenv("OLLAMA_URL", "http://localhost:11434")
-    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:latest")
-    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    AI_PROVIDER: str = get_env_str("AI_PROVIDER", "local")  # "openai", "gemini", "ollama", "groq", "local"
+    OPENAI_API_KEY: str = get_env_str("OPENAI_API_KEY", "")
+    GEMINI_API_KEY: str = get_env_str("GEMINI_API_KEY", "")
+    GROQ_API_KEY: str = get_env_str("GROQ_API_KEY", "")
+    GROQ_MODEL: str = get_env_str("GROQ_MODEL", "llama-3.3-70b-versatile")
+    OLLAMA_URL: str = get_env_str("OLLAMA_URL", "http://localhost:11434")
+    OLLAMA_MODEL: str = get_env_str("OLLAMA_MODEL", "qwen2.5-coder:latest")
+    OPENAI_MODEL: str = get_env_str("OPENAI_MODEL", "gpt-4o-mini")
     
     # GitHub Integration
-    GITHUB_TOKEN: str = os.getenv("GITHUB_TOKEN", "")
+    GITHUB_TOKEN: str = get_env_str("GITHUB_TOKEN", "")
     
     # Scan Limits & Security
     MAX_UPLOAD_SIZE_MB: int = int(os.getenv("MAX_UPLOAD_SIZE_MB", "50"))

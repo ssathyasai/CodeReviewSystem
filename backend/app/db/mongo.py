@@ -264,15 +264,17 @@ class Database:
 
     def connect(self):
         try:
-            logger.info(f"Connecting to MongoDB at {settings.MONGODB_URI}...")
+            clean_uri = (settings.MONGODB_URI or "").strip().strip('"').strip("'").replace("\r", "").replace("\n", "").strip()
+            clean_db_name = (settings.MONGODB_DB_NAME or "codereview_db").strip().strip('"').strip("'").replace("\r", "").replace("\n", "").strip()
+            logger.info(f"Connecting to MongoDB database '{clean_db_name}'...")
             self.client = pymongo.MongoClient(
-                settings.MONGODB_URI,
-                serverSelectionTimeoutMS=1500,
-                connectTimeoutMS=1500
+                clean_uri,
+                serverSelectionTimeoutMS=3000,
+                connectTimeoutMS=3000
             )
             # Test ping
             self.client.admin.command('ping')
-            self.db = self.client[settings.MONGODB_DB_NAME]
+            self.db = self.client[clean_db_name]
             self.is_connected = True
             self.use_fallback = False
             logger.info("Successfully connected to MongoDB!")
@@ -284,6 +286,12 @@ class Database:
 
     def _init_indexes(self):
         if not self.use_fallback and self.db is not None:
+            def _safe_create(col, keys, **kwargs):
+                try:
+                    col.create_index(keys, **kwargs)
+                except Exception as ex:
+                    logger.debug(f"Index note for {col.name}: {ex}")
+
             try:
                 # Clean up legacy unique non-sparse scan_id index if present
                 try:
@@ -294,18 +302,18 @@ class Database:
                 except Exception as drop_err:
                     logger.debug(f"Index drop note: {drop_err}")
 
-                self.db.scans.create_index([("id", pymongo.ASCENDING)], unique=True, sparse=True)
-                self.db.scans.create_index([("scan_id", pymongo.ASCENDING)], sparse=True)
-                self.db.scans.create_index([("created_at", pymongo.DESCENDING)])
-                self.db.findings.create_index([("scan_id", pymongo.ASCENDING), ("severity", pymongo.ASCENDING)])
-                self.db.findings.create_index([("rule_id", pymongo.ASCENDING)])
-                self.db.governance_policies.create_index([("policy_id", pymongo.ASCENDING)], unique=True, sparse=True)
-                self.db.governance_events.create_index([("timestamp", pymongo.DESCENDING)])
-                self.db.ai_reviews.create_index([("scan_id", pymongo.ASCENDING)])
-                self.db.audit_logs.create_index([("timestamp", pymongo.DESCENDING)])
+                _safe_create(self.db.scans, [("id", pymongo.ASCENDING)], unique=True, sparse=True)
+                _safe_create(self.db.scans, [("scan_id", pymongo.ASCENDING)], sparse=True)
+                _safe_create(self.db.scans, [("created_at", pymongo.DESCENDING)])
+                _safe_create(self.db.findings, [("scan_id", pymongo.ASCENDING), ("severity", pymongo.ASCENDING)])
+                _safe_create(self.db.findings, [("rule_id", pymongo.ASCENDING)])
+                _safe_create(self.db.governance_policies, [("policy_id", pymongo.ASCENDING)], unique=True)
+                _safe_create(self.db.governance_events, [("timestamp", pymongo.DESCENDING)])
+                _safe_create(self.db.ai_reviews, [("scan_id", pymongo.ASCENDING)])
+                _safe_create(self.db.audit_logs, [("timestamp", pymongo.DESCENDING)])
                 logger.info("MongoDB indexes verified.")
             except Exception as e:
-                logger.warning(f"Index creation warning: {e}")
+                logger.warning(f"Index verification warning: {e}")
 
     def get_collection(self, name: str):
         if not self.is_connected:
