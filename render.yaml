@@ -1,14 +1,16 @@
 # =============================================================================
 # Render Blueprint Specification (Infrastructure as Code)
+# Unified Single Full-Stack Web Service (Frontend + Backend Deployed at Once)
 # Docs: https://render.com/docs/blueprint-spec
 # =============================================================================
 
 services:
   # ---------------------------------------------------------------------------
-  # 1. FastAPI Backend Web Service
+  # Unified Full-Stack Web Service
+  # Serves both the React SPA Dashboard and FastAPI REST Backend on a single URL
   # ---------------------------------------------------------------------------
   - type: web
-    name: codereview-backend
+    name: codereview-system
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt
@@ -33,27 +35,3 @@ services:
         sync: false
       - key: GITHUB_TOKEN
         sync: false
-
-  # ---------------------------------------------------------------------------
-  # 2. React / Vite Frontend Static Site (Free tier, global CDN)
-  # In Render Blueprint, static sites are specified with:
-  # type: web + runtime: static
-  # ---------------------------------------------------------------------------
-  - type: web
-    name: codereview-frontend
-    runtime: static
-    plan: free
-    rootDir: frontend
-    buildCommand: npm install && npm run build
-    staticPublishPath: ./dist
-    routes:
-      # SPA rewrite rule to allow client-side routing
-      - type: rewrite
-        source: /*
-        destination: /index.html
-    envVars:
-      - key: VITE_API_URL
-        fromService:
-          type: web
-          name: codereview-backend
-          property: url
