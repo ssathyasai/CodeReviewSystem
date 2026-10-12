@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import subprocess
+import sys
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -170,6 +171,39 @@ MULTI_LANG_RULES = [
         "cwe": ["CWE-22"],
         "description": "Opening file paths derived from user inputs without canonicalization checks enables unauthorized file access (e.g. `../../etc/passwd`).",
         "remediation": "Validate paths using `os.path.abspath` and verify `target_path.startswith(safe_base_dir)`."
+    },
+    {
+        "id": "PY-STREAMLIT-XSS",
+        "title": "Cross-Site Scripting (XSS) / Raw HTML Injection in Streamlit",
+        "extensions": [".py"],
+        "regex": r"(?:st\.(?:markdown|write|caption|html)\s*\(.*unsafe_allow_html\s*=\s*True|unsafe_allow_html\s*=\s*True)",
+        "severity": SeverityEnum.HIGH,
+        "category": FindingCategoryEnum.XSS,
+        "cwe": ["CWE-79"],
+        "description": "Rendering unescaped HTML or styles using unsafe_allow_html=True introduces Cross-Site Scripting (XSS) and client-side code execution risks.",
+        "remediation": "Sanitize HTML content using Bleach before rendering, or utilize native Streamlit text and layout components without unsafe_allow_html=True."
+    },
+    {
+        "id": "PY-UNTRUSTED-MODEL-DESERIALIZATION",
+        "title": "Insecure Deserialization of Serialized ML Model Weights",
+        "extensions": [".py"],
+        "regex": r"(?:load_model\s*\(|torch\.load\s*\(|joblib\.load\s*\(|pickle\.load\s*\()",
+        "severity": SeverityEnum.MEDIUM,
+        "category": FindingCategoryEnum.INSECURE_DESERIALIZATION,
+        "cwe": ["CWE-502"],
+        "description": "Loading serialized machine learning models (.h5, .keras, .pkl, .pt) using load_model or pickle can trigger arbitrary code execution if the model weights file is modified or untrusted.",
+        "remediation": "Validate model file cryptographic hash (SHA-256) before loading, or adopt safe serialization formats like safetensors."
+    },
+    {
+        "id": "PY-UNVALIDATED-FILE-UPLOAD",
+        "title": "Unrestricted / Unvalidated File Processing",
+        "extensions": [".py"],
+        "regex": r"(?:st\.file_uploader|Image\.open\s*\(|cv2\.imread\s*\()",
+        "severity": SeverityEnum.LOW,
+        "category": FindingCategoryEnum.SECURITY_MISCONFIG,
+        "cwe": ["CWE-434"],
+        "description": "Processing uploaded files directly without checking maximum upload size limits, MIME magic bytes, or file integrity can lead to memory exhaustion or denial of service.",
+        "remediation": "Validate file content headers (magic bytes), restrict file size, and wrap image parsing in error-handling blocks."
     },
 
     # JavaScript / TypeScript Rules
@@ -405,7 +439,7 @@ class SastEngine:
     def _run_bandit(cls, workspace_path: Path, scan_id: str) -> List[Finding]:
         findings = []
         try:
-            cmd = ["python", "-m", "bandit", "-r", str(workspace_path), "-f", "json", "-q"]
+            cmd = [sys.executable, "-m", "bandit", "-r", str(workspace_path), "-f", "json", "-q"]
             res = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
             if res.stdout:
                 data = json.loads(res.stdout)
